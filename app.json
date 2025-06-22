@@ -1,22 +1,27 @@
 {
   "expo": {
-    "name": "soundhalla",
-    "slug": "soundhalla",
+    "name": "Tunenova",
+    "slug": "tunenova",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "soundhalla",
+    "scheme": "tunenova",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#000000"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.caribou97499.tunenova"
     },
     "web": {
       "bundler": "metro",
@@ -31,12 +36,20 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#000000"
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cf36c7d3-5a2c-40e2-9e5d-eb8c162ca8d3"
+      }
     }
   }
 }

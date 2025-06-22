@@ -1,0 +1,282 @@
+import { Entypo, Feather, Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import React from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useMyCampaigns } from "../../api/campaign/campaign";
+
+export default function CampaignsScreen() {
+  const { data, isLoading, error } = useMyCampaigns();
+  const campaigns = data?.data || [];
+  const hasData = campaigns.length > 0;
+  console.log(data);
+
+  /* --------------------------------------------------------------- */
+  /*  Header                                                         */
+  /* --------------------------------------------------------------- */
+  const Header = () => (
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 10,
+        alignItems: "center",
+        paddingHorizontal: 24,
+        marginTop: 10,
+        marginBottom: 20,
+      }}
+    >
+      <TouchableOpacity onPress={() => router.back()}>
+        <Entypo
+          name="chevron-left"
+          size={24}
+          color="white"
+        />
+      </TouchableOpacity>
+      <Text style={styles.h1}>Your Campaigns</Text>
+    </View>
+  );
+
+  /* --------------------------------------------------------------- */
+  /*  Empty state component                                          */
+  /* --------------------------------------------------------------- */
+  const Empty = () => (
+    <View style={styles.emptyCard}>
+      <Ionicons
+        name="clipboard-outline"
+        size={64}
+        color="#737373"
+      />
+      <Text style={styles.emptyTitle}>No active campaigns</Text>
+      <Text style={styles.emptySub}>
+        You &apos;t have any Campaigns yet. When{"\n"}you do, they will appear
+        here
+      </Text>
+    </View>
+  );
+
+  /* --------------------------------------------------------------- */
+  /*  "Promote your Song"  CTA                                       */
+  /* --------------------------------------------------------------- */
+  const PromoteCTA = () => (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      style={styles.promoteBtn}
+      onPress={() => router.push("/promote")}
+    >
+      <Text style={styles.promoteTxt}>Promote your Song</Text>
+    </TouchableOpacity>
+  );
+
+  /* --------------------------------------------------------------- */
+  /*  Campaign card component                                        */
+  /* --------------------------------------------------------------- */
+  const Card = ({ item, index }: { item: any; index: number }) => {
+    // Calculate min and max from budget
+    const budget = item.budget || 0;
+    const min = Math.floor(budget / 20);
+    const max = min + 50;
+    // Use listens from API
+    const listens = item.listens || 0;
+    // Progress is listens / max (capped at 1)
+    const progress = max > 0 ? Math.min(listens / max, 1) : 0;
+
+    return (
+      <TouchableOpacity
+        onPress={() => {
+          router.push({
+            pathname: "/(others)/campaignId",
+            params: {
+              id: item.id,
+            },
+          });
+        }}
+      >
+        <Animated.View
+          entering={FadeIn.delay(index * 60)}
+          style={styles.card}
+        >
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardNo}>#{item.id}</Text>
+            <Feather
+              name="chevron-right"
+              size={22}
+              color="#000"
+            />
+          </View>
+
+          <Text style={styles.cardTitle}>{item.songTitle}</Text>
+
+          <Text style={styles.budget}>
+            Budget:&nbsp;
+            <Text style={styles.budgetAmt}>
+              {budget === 0 || budget === null
+                ? "Free"
+                : `₦${budget.toLocaleString("en-NG")}`}
+            </Text>
+          </Text>
+
+          {/* progress */}
+          <View style={styles.progressTrack}>
+            <Animated.View style={[styles.progressFill]} />
+          </View>
+
+          <View style={styles.progressMeta}>
+            <Text style={styles.metaLeft}>{listens} Listeners</Text>
+            {budget > 0 ? (
+              <Text style={styles.metaRight}>
+                {min} - {max}
+              </Text>
+            ) : null}
+          </View>
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  };
+
+  /* --------------------------------------------------------------- */
+  /*  Render                                                         */
+  /* --------------------------------------------------------------- */
+  return (
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" />
+
+      <Header />
+
+      {isLoading ? (
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <ActivityIndicator
+            size="large"
+            color="#ff003c"
+          />
+        </View>
+      ) : error ? (
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <Text style={{ color: "#ff003c", fontSize: 16, marginBottom: 10 }}>
+            Failed to load campaigns
+          </Text>
+          <Text style={{ color: "#737373" }}>
+            {error.message || "An error occurred."}
+          </Text>
+        </View>
+      ) : hasData ? (
+        <FlatList
+          data={campaigns}
+          keyExtractor={(c) => c.id}
+          renderItem={Card}
+          contentContainerStyle={{ paddingBottom: 140 }}
+          ItemSeparatorComponent={() => <View style={{ height: 22 }} />}
+        />
+      ) : (
+        <View style={{ justifyContent: "flex-start" }}>
+          <Empty />
+        </View>
+      )}
+
+      <PromoteCTA />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: "#000" },
+  h1: {
+    fontSize: 24,
+    fontFamily: "Nunito-Bold",
+    color: "#fff",
+    textAlign: "center",
+  },
+
+  /* ---------- card ---------- */
+  card: {
+    backgroundColor: "#fafafa",
+    borderRadius: 14,
+    padding: 20,
+    marginHorizontal: 24,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cardNo: { color: "#737373", fontFamily: "Nunito-Bold" },
+  cardTitle: { fontSize: 20, fontFamily: "Nunito-Bold", marginVertical: 6 },
+  budget: {
+    color: "#6b7280",
+    marginBottom: 12,
+    fontFamily: "Nunito-Regular",
+  },
+  budgetAmt: { color: "#000", fontFamily: "Nunito-Bold" },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#d4d4d4",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#ff003c",
+  },
+  progressMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  metaLeft: {
+    color: "#737373",
+    fontSize: 13,
+    fontFamily: "Nunito-Regular",
+  },
+  metaRight: {
+    color: "#737373",
+    fontSize: 13,
+    fontFamily: "Nunito-Regular",
+  },
+
+  /* ---------- empty ---------- */
+  emptyCard: {
+    alignSelf: "center",
+    width: "85%",
+    backgroundColor: "#f5f5f5",
+    borderRadius: 20,
+    paddingVertical: 60,
+    alignItems: "center",
+  },
+  emptyTitle: {
+    fontSize: 22,
+    fontFamily: "Nunito-Bold",
+    marginTop: 18,
+    color: "#000",
+  },
+  emptySub: {
+    textAlign: "center",
+    color: "#737373",
+    marginTop: 6,
+    lineHeight: 20,
+    fontFamily: "Nunito-Regular",
+  },
+
+  /* ---------- promote btn ---- */
+  promoteBtn: {
+    backgroundColor: "#ff003c",
+    marginHorizontal: 24,
+    borderRadius: 12,
+    paddingVertical: 18,
+    alignItems: "center",
+    marginTop: 28,
+    marginBottom: 50,
+  },
+  promoteTxt: { color: "#fff", fontSize: 18, fontFamily: "Nunito-Bold" },
+});
