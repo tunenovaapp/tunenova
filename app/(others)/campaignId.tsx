@@ -11,6 +11,7 @@ import {
 
 import { Entypo } from "@expo/vector-icons";
 import { UseQueryResult } from "@tanstack/react-query";
+import * as Linking from "expo-linking";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CampaignResponse, useCampaign } from "../../api/campaign/campaign";
 
@@ -27,7 +28,12 @@ export default function CampaignAnalyticsScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView
+        style={[
+          styles.safe,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
         <ActivityIndicator
           size="large"
           color="#ff003c"
@@ -81,6 +87,29 @@ export default function CampaignAnalyticsScreen() {
         description="No of people who liked & discovered your song on the platform you're promoting."
         value={fans}
       />
+
+      {/* Paystack payment button if paid and pending */}
+      {campaign?.isPaid &&
+        campaign?.status === "pending" &&
+        campaign?.paystackPaymentUrl && (
+          <TouchableOpacity
+            style={[
+              styles.cta,
+              {
+                backgroundColor: "#fff",
+                borderWidth: 1,
+                borderColor: "#ff003c",
+                marginBottom: 10,
+              },
+            ]}
+            activeOpacity={0.85}
+            onPress={() => Linking.openURL(campaign.paystackPaymentUrl)}
+          >
+            <Text style={[styles.ctaTxt, { color: "#ff003c" }]}>
+              Complete Payment
+            </Text>
+          </TouchableOpacity>
+        )}
 
       {/* -------------------- CTA ---------------------------------- */}
       <TouchableOpacity

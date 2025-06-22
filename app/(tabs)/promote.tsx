@@ -90,7 +90,7 @@ export default function CreateCampaignScreen() {
             <Text style={styles.h2}>Choose Campaign</Text>
             <Text style={styles.p}>
               Free campaigns allow you upload a snippet of your song to the
-              tunenova app.
+              Tunenova app.
             </Text>
             <Text style={styles.p}>
               Paid campaigns guarantee a number of fans that will hear your song
@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   },
   h1: {
     fontSize: RFValue(22),
-    fontFamily: "Nunito-Medium",
+    fontFamily: "Nunito-Bold",
     color: "#fff",
     textAlign: "center",
   },

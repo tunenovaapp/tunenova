@@ -82,7 +82,7 @@ export default function ProfileScreen({ navigation }: any) {
         activeOpacity={0.9}
         onPress={async () => {
           await purgeTokens();
-          router.replace("/(auth)/register");
+          router.replace("/(auth)/login");
         }}
       >
         <Text style={styles.logoutTxt}>Logout</Text>

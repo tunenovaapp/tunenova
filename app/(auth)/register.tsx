@@ -319,7 +319,15 @@ export default function SignupScreen() {
                     marginBottom: 10,
                   }}
                 >
-                  Have an account? Login
+                  Have an account?{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Nunito-Bold",
+                      color: "#ff003c",
+                    }}
+                  >
+                    Login
+                  </Text>
                 </Text>
               </TouchableOpacity>
 

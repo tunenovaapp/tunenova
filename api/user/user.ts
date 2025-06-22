@@ -137,8 +137,8 @@ export function useUpdatePlatforms(
 
 export interface StatsData {
   listens: number;
-  uniqueCampaigns: number;
   referrals: number;
+  discoveries: number;
 }
 
 export type StatsResponse = StatsData; // endpoint returns raw JSON, no wrapper

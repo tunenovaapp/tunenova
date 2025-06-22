@@ -1,4 +1,4 @@
-import { AntDesign, MaterialIcons } from "@expo/vector-icons";
+import { MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Image } from "expo-image";
@@ -62,13 +62,20 @@ export default function ExplorePlayerScreen() {
   const [showModal, setShowModal] = useState(false);
   const progress = useSharedValue(0);
   const [showPostLike, setShowPostLike] = useState(false);
-  const scale = useSharedValue(1);
   const colorProgress = useSharedValue(0);
   const [refreshing, setRefreshing] = useState(false);
   const [showRefreshHint, setShowRefreshHint] = useState(false);
   const [hasRefreshed, setHasRefreshed] = useState(false);
   const hintBounce = useSharedValue(0);
   const thump = useSharedValue(1);
+  const [isPaused, setIsPaused] = useState(false);
+  const [showTipsModal, setShowTipsModal] = useState(false);
+  const [currentTipIdx, setCurrentTipIdx] = useState(0);
+  const tips = [
+    "Earn cash instantly when you listen to songs with the “sponsored” tag.",
+    "Earn more cash when you invite friends",
+    "Tap the album art to pause or play the music.",
+  ];
 
   // Check if user has ever refreshed
   useEffect(() => {
@@ -128,30 +135,35 @@ export default function ExplorePlayerScreen() {
 
   // Start animations
   useEffect(() => {
-    // Background color animation
-    colorProgress.value = withRepeat(
-      withTiming(1, { duration: 7000, easing: Easing.linear }),
-      -1,
-      true
-    );
+    if (!isPaused) {
+      // Background color animation
+      colorProgress.value = withRepeat(
+        withTiming(1, { duration: 7000, easing: Easing.linear }),
+        -1,
+        true
+      );
 
-    // Thump animation
-    thump.value = withRepeat(
-      withSequence(
-        // A gentle, steady pulse
-        withTiming(1.1, {
-          duration: 600,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        withTiming(1, {
-          duration: 600,
-          easing: Easing.inOut(Easing.ease),
-        })
-      ),
-      -1,
-      true // yoyo (reverses the animation)
-    );
-  }, []);
+      // Thump animation
+      thump.value = withRepeat(
+        withSequence(
+          // A gentle, steady pulse
+          withTiming(1.1, {
+            duration: 600,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          withTiming(1, {
+            duration: 600,
+            easing: Easing.inOut(Easing.ease),
+          })
+        ),
+        -1,
+        true // yoyo (reverses the animation)
+      );
+    } else {
+      // Pause thump animation
+      thump.value = 1;
+    }
+  }, [isPaused]);
 
   const thumpAnimationStyle = useAnimatedStyle(() => ({
     transform: [{ scale: thump.value }],
@@ -230,8 +242,8 @@ export default function ExplorePlayerScreen() {
 
   // No longer move to next on dislike
   const handleDislike = useCallback(() => {
-    handleNext();
     setShowModal(false);
+    handleNext();
     setShowPostLike(true);
   }, [player]);
 
@@ -260,6 +272,8 @@ export default function ExplorePlayerScreen() {
       }
     }
 
+    // Pause playback before opening link/modal
+    player.pause();
     // Mutate and open link
     discoverMutate({ id: campaign.id });
     setShowModal(true);
@@ -268,6 +282,8 @@ export default function ExplorePlayerScreen() {
   // Like the campaign (no longer moves to next)
   const handleLike = useCallback(() => {
     likeMutate({ id: campaign.id });
+    // Pause playback before opening link
+    player.pause();
     // Show skip/discover buttons
     if (campaign?.songLink) {
       Linking.openURL(campaign.songLink);
@@ -291,6 +307,46 @@ export default function ExplorePlayerScreen() {
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
+
+  // Pause/resume player when like modal is shown/hidden
+  useEffect(() => {
+    if (showModal) {
+      player.pause();
+    } else {
+      if (status?.didJustFinish) {
+        handleNext();
+      } else if (!isPaused) {
+        player.play();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showModal]);
+
+  // Show tips modal for first-time users
+  useEffect(() => {
+    (async () => {
+      const seen = await AsyncStorage.getItem("hasSeenTips");
+      if (!seen) {
+        setShowTipsModal(true);
+      }
+    })();
+  }, []);
+
+  // Block playback if tips modal is open
+  useEffect(() => {
+    if (showTipsModal) {
+      player.pause();
+    } else if (!isPaused && !showModal) {
+      player.play();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTipsModal]);
+
+  // Also block playback on campaign change if tips modal is open
+  useEffect(() => {
+    if (showTipsModal) player.pause();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaign]);
 
   // Skeleton loader
   if (isLoading || isFetching) {
@@ -407,6 +463,8 @@ export default function ExplorePlayerScreen() {
     <AnimatedSafeAreaView
       style={[styles.container, styles.screenGlow, rScreenGlowStyle]}
     >
+      {/* Pull to refresh hint - absolutely positioned at the top */}
+
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, justifyContent: "space-between" }}
         refreshControl={
@@ -416,18 +474,6 @@ export default function ExplorePlayerScreen() {
           />
         }
       >
-        {/* Pull to refresh hint */}
-        {showRefreshHint && (
-          <Animated.View style={[styles.refreshHint, rHintStyle]}>
-            <AntDesign
-              name="arrowdown"
-              size={28}
-              color="#fff"
-              style={{ marginBottom: 2 }}
-            />
-            <Text style={styles.refreshHintText}>Pull down to refresh!</Text>
-          </Animated.View>
-        )}
         {/* Header -------------------------------------------------------- */}
         <View style={styles.headerRow}>
           <Image
@@ -458,12 +504,35 @@ export default function ExplorePlayerScreen() {
         </View>
 
         {/* Album art */}
-        <View style={styles.heroContainer}>
+        <Pressable
+          style={styles.heroContainer}
+          onPress={() => {
+            if (isPaused) {
+              setIsPaused(false);
+              player.play();
+            } else {
+              setIsPaused(true);
+              player.pause();
+            }
+          }}
+        >
           <Animated.Image
             source={require("../../assets/images/Asset 2@4x-8.png")}
-            style={[styles.hero, thumpAnimationStyle]}
+            style={[
+              styles.hero,
+              thumpAnimationStyle,
+              isPaused && { opacity: 0.5 }, // Dim when paused
+            ]}
           />
-        </View>
+          {isPaused && (
+            <View
+              style={styles.heroOverlay}
+              pointerEvents="none"
+            >
+              <Text style={styles.heroOverlayText}>Paused</Text>
+            </View>
+          )}
+        </Pressable>
 
         {/* Track meta + progress ---------------------------------------- */}
         <View style={styles.metaWrapper}>
@@ -480,22 +549,21 @@ export default function ExplorePlayerScreen() {
               -{formatTime(status?.duration ?? 0)}
             </Text>
           </View>
-          {(showPostLike || !campaign.isPaid) && (
-            <View style={styles.postLikeRow}>
-              <TouchableOpacity
-                style={styles.skipBtn}
-                onPress={handleSkip}
-              >
-                <Text style={styles.skipBtnText}>Next</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.discoverBtn}
-                onPress={handleDiscover}
-              >
-                <Text style={styles.discoverBtnText}>Discover</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+
+          <View style={styles.postLikeRow}>
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={handleSkip}
+            >
+              <Text style={styles.skipBtnText}>Next</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.discoverBtn}
+              onPress={handleDiscover}
+            >
+              <Text style={styles.discoverBtnText}>Discover</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Like Modal */}
@@ -534,6 +602,36 @@ export default function ExplorePlayerScreen() {
                   </Text>
                 </Pressable>
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Tips Modal for first-time registration */}
+        <Modal
+          visible={true}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {}}
+        >
+          <View style={styles.tipsModalOverlay}>
+            <View style={styles.tipsModalContent}>
+              <Text style={styles.tipsModalTitle}>Nova Tips</Text>
+              <Text style={styles.tipsModalText}>{tips[currentTipIdx]}</Text>
+              <TouchableOpacity
+                style={styles.tipsModalBtn}
+                onPress={async () => {
+                  if (currentTipIdx < tips.length - 1) {
+                    setCurrentTipIdx((idx) => idx + 1);
+                  } else {
+                    setShowTipsModal(false);
+                    await AsyncStorage.setItem("hasSeenTips", "true");
+                  }
+                }}
+              >
+                <Text style={styles.tipsModalBtnText}>
+                  {currentTipIdx < tips.length - 1 ? "Proceed" : "Finish"}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -602,7 +700,7 @@ const styles = StyleSheet.create({
   },
   metaWrapper: {
     paddingHorizontal: 24,
-    paddingBottom: 120,
+    paddingBottom: 50,
   },
   title: {
     fontSize: RFValue(24),
@@ -724,5 +822,83 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 6,
     letterSpacing: 0.5,
+  },
+  refreshHintAbsolute: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+    backgroundColor: "#E10032",
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    alignSelf: "stretch",
+    flexDirection: "row",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 24,
+  },
+  heroOverlayText: {
+    color: "#fff",
+    fontSize: RFValue(16),
+    fontFamily: "Nunito-Bold",
+    backgroundColor: "rgba(0,0,0,0.32)",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  tipsModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tipsModalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    alignItems: "center",
+    width: 300,
+    gap: 10,
+  },
+  tipsModalTitle: {
+    color: "#000",
+    fontSize: RFValue(14),
+    fontFamily: "Nunito-Bold",
+    textAlign: "center",
+  },
+  tipsModalText: {
+    color: "#000",
+    fontSize: RFValue(13),
+    fontFamily: "Nunito-Medium",
+    textAlign: "center",
+  },
+  tipsModalBtn: {
+    backgroundColor: "#ff003c",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: "center",
+  },
+  tipsModalBtnText: {
+    color: "#fff",
+    fontFamily: "Nunito-Regular",
+    fontSize: RFValue(12),
   },
 });

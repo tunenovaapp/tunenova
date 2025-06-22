@@ -34,7 +34,7 @@ type FormShape = {
   songLink: string;
   genre: string;
   snippet: DocumentPicker.DocumentPickerAsset;
-  audience: string;
+  audience: string[];
   budget?: string;
 };
 
@@ -52,9 +52,12 @@ const schema = yup.object({
     .test(
       "size",
       "Max size is 10 MB",
-      (file) => !file || (file.size ?? 0) <= 10 * 1024 * 1024
+      (file) => !file || (file.size ?? 0) <= 5 * 1024 * 1024
     ),
-  audience: yup.string().required("Select a target audience"),
+  audience: yup
+    .array()
+    .of(yup.string())
+    .min(1, "Select at least one audience type"),
   budget: yup
     .string()
     .optional()
@@ -81,7 +84,7 @@ export default function CreatePaidCampaignScreen() {
       songLink: "",
       genre: "",
       snippet: {} as DocumentPicker.DocumentPickerAsset,
-      audience: "",
+      audience: [],
       budget: undefined,
     },
   });
@@ -123,13 +126,12 @@ export default function CreatePaidCampaignScreen() {
   /*  Submit                                                         */
   /* --------------------------------------------------------------- */
   const onSubmit = (data: any) => {
-    console.log(data);
     setMessage(null);
     // Map form data to API payload
     const payload = {
       songTitle: data.songTitle,
       genre: data.genre,
-      targetAudience: [data.audience],
+      targetAudience: data.audience,
       audioFile: {
         uri: data.snippet.uri,
         name: data.snippet.name,
@@ -228,7 +230,7 @@ export default function CreatePaidCampaignScreen() {
             name="songLink"
             render={({ field: { onChange, value } }) => (
               <Input
-                placeholder="Enter song link"
+                placeholder="https://spotify.com..."
                 value={value}
                 onChangeText={onChange}
                 autoCapitalize="none"
@@ -315,14 +317,16 @@ export default function CreatePaidCampaignScreen() {
                 value={field.value}
                 onChange={field.onChange}
                 items={[
-                  { label: "Afrobeats", value: "afrobeats" },
-                  { label: "Pop", value: "pop" },
-                  { label: "Hip-hop", value: "hiphop" },
-                  { label: "Gospel", value: "gospel" },
-                  { label: "Country", value: "country" },
-                  { label: "R&B", value: "rnb" },
+                  { label: "Spotify", value: "spotify" },
+                  { label: "Youtube", value: "youtube" },
+                  { label: "Apple-music", value: "apple-music" },
+                  { label: "Boomplay", value: "boomplay" },
+                  { label: "Audiomack", value: "audiomack" },
+                  { label: "Tidal", value: "tidal" },
+                  { label: "Deezer", value: "deezer" },
                 ]}
                 error={errors.audience?.message}
+                multiSelect
               />
             )}
           />
@@ -443,12 +447,14 @@ const PickerInput = ({
   items,
   placeholder,
   error,
+  multiSelect,
 }: {
-  value: string;
-  onChange: (v: string) => void;
+  value: string[] | string;
+  onChange: (v: any) => void;
   items: { label: string; value: string }[];
   placeholder: string;
   error?: string;
+  multiSelect?: boolean;
 }) => (
   <View style={{ marginBottom: 12 }}>
     <CustomPicker
@@ -457,6 +463,7 @@ const PickerInput = ({
       value={value}
       placeholder={placeholder}
       modalTitle={`Select ${placeholder}`}
+      multiSelect={multiSelect}
     />
     {error ? <Text style={styles.errorText}>{error}</Text> : null}
   </View>

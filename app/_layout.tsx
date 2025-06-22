@@ -18,13 +18,10 @@ export default function RootLayout() {
     "Montserrat-Medium": require("../assets/fonts/Montserrat-Medium.ttf"),
     "Nunito-SemiBold": require("../assets/fonts/Montserrat-SemiBold.ttf"),
     "Nunito-Regular": require("../assets/fonts/Montserrat-Regular.ttf"),
-    "Nunito-Bold": require("../assets/fonts/Nunito-Bold.ttf"),
     "Nunito-ExtraBold": require("../assets/fonts/Nunito-ExtraBold.ttf"),
     "Nunito-ExtraLight": require("../assets/fonts/Nunito-ExtraLight.ttf"),
     "Nunito-Light": require("../assets/fonts/Nunito-Light.ttf"),
     "Nunito-Medium": require("../assets/fonts/Nunito-Medium.ttf"),
-    "Nunito-SemiBold": require("../assets/fonts/Nunito-SemiBold.ttf"),
-    "Nunito-Regular": require("../assets/fonts/Nunito-Regular.ttf"),
     "RedditSans-Bold": require("../assets/fonts/RedditSans-Bold.ttf"),
   });
 

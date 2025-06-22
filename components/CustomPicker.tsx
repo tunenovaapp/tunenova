@@ -21,6 +21,7 @@ type CustomPickerProps = {
   onChange: (value: any) => void;
   placeholder?: string;
   modalTitle?: string;
+  multiSelect?: boolean;
 };
 
 export default function CustomPicker({
@@ -29,9 +30,29 @@ export default function CustomPicker({
   onChange,
   placeholder,
   modalTitle,
+  multiSelect = false,
 }: CustomPickerProps) {
   const [isPickerVisible, setPickerVisible] = useState(false);
-  const selectedLabel = options.find((item) => item.value === value)?.label;
+  const selectedLabels = multiSelect
+    ? options
+        .filter((item) => Array.isArray(value) && value.includes(item.value))
+        .map((item) => item.label)
+    : [options.find((item) => item.value === value)?.label].filter(Boolean);
+
+  const handleSelect = (itemValue: any) => {
+    if (multiSelect) {
+      let newValue = Array.isArray(value) ? [...value] : [];
+      if (newValue.includes(itemValue)) {
+        newValue = newValue.filter((v) => v !== itemValue);
+      } else {
+        newValue.push(itemValue);
+      }
+      onChange(newValue);
+    } else {
+      onChange(itemValue);
+      setPickerVisible(false);
+    }
+  };
 
   return (
     <>
@@ -40,9 +61,14 @@ export default function CustomPicker({
         onPress={() => setPickerVisible(true)}
       >
         <Text
-          style={[styles.pickerText, { color: value ? "#fff" : "#6b7280" }]}
+          style={[
+            styles.pickerText,
+            { color: selectedLabels.length ? "#fff" : "#6b7280" },
+          ]}
         >
-          {selectedLabel || placeholder || "Select an option..."}
+          {selectedLabels.length > 0
+            ? selectedLabels.join(", ")
+            : placeholder || "Select an option..."}
         </Text>
         <Ionicons
           name="chevron-down"
@@ -71,21 +97,46 @@ export default function CustomPicker({
             <FlatList
               data={options}
               keyExtractor={(item) => item.value.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.modalItem}
-                  onPress={() => {
-                    onChange(item.value);
-                    setPickerVisible(false);
-                  }}
-                >
-                  <Text style={styles.modalItemText}>{item.label}</Text>
-                </TouchableOpacity>
-              )}
+              renderItem={({ item }) => {
+                const isSelected = multiSelect
+                  ? Array.isArray(value) && value.includes(item.value)
+                  : value === item.value;
+                return (
+                  <TouchableOpacity
+                    style={styles.modalItem}
+                    onPress={() => handleSelect(item.value)}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <Text style={styles.modalItemText}>{item.label}</Text>
+                      {isSelected && (
+                        <Ionicons
+                          name="checkmark"
+                          size={18}
+                          color="#34d399"
+                        />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
               ItemSeparatorComponent={() => (
                 <View style={styles.modalSeparator} />
               )}
             />
+            {multiSelect && (
+              <TouchableOpacity
+                style={{ marginTop: 16, alignSelf: "center" }}
+                onPress={() => setPickerVisible(false)}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>Done</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
       </Modal>

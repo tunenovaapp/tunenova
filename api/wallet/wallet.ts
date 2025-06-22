@@ -166,8 +166,7 @@ export function useBalance(
 
 export interface WithdrawBody {
   amount: number;
-  bankCode: string;
-  accountNumber: string;
+  bankAccountId: string | number;
 }
 
 export interface WithdrawResponse {

@@ -207,14 +207,15 @@ export default function LoginScreen() {
           )}
 
           {/* Sign up link --------------------------------------------- */}
-          <View style={styles.signUpRow}>
-            <Text style={{ color: "#fff" }}>
-              &apos;Don&apos;t have an account?&apos;{" "}
-            </Text>
-            <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
+          <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
+            <View style={styles.signUpRow}>
+              <Text style={{ color: "#fff", fontFamily: "Nunito-Regular" }}>
+                Don&apos;t have an account?{" "}
+              </Text>
+
               <Text style={styles.signUp}>Sign up</Text>
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
         </Animated.View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -309,5 +310,6 @@ const styles = StyleSheet.create({
   },
   signUp: {
     color: "#ff0066",
+    fontFamily: "Nunito-Bold",
   },
 });

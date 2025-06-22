@@ -241,7 +241,7 @@ export default function WalletScreen({ navigation }: any) {
                   icon="radar"
                   label="DISCOVERED"
                   family="MaterialCommunityIcons"
-                  value={isStatsError ? 0 : stats?.uniqueCampaigns ?? 0}
+                  value={isStatsError ? 0 : stats?.discoveries ?? 0}
                 />
                 <View style={styles.vLine} />
                 <Metric
@@ -388,11 +388,6 @@ const withdrawalSchema = yup.object().shape({
       "Minimum withdrawal is ₦100",
       (value) => !value || Number(value) >= 100
     ),
-  bankCode: yup.string().required("Please select a bank"),
-  accountNumber: yup
-    .string()
-    .required("Account number is required")
-    .matches(/^[0-9]{10}$/, "Account number must be 10 digits"),
 });
 
 // Separate schema for bank account verification
@@ -430,6 +425,7 @@ const NIGERIAN_BANKS = [
   { label: "Opay", value: "999992" },
   { label: "Palmpay", value: "999991" },
   { label: "Polaris Bank", value: "076" },
+  { label: "Providus Bank", value: "101" },
   { label: "Stanbic IBTC Bank", value: "221" },
   { label: "Standard Chartered Bank", value: "068" },
   { label: "Sterling Bank", value: "232" },
@@ -568,14 +564,12 @@ function WithdrawSheet({
     setMessage("");
     console.log("Submitting withdrawal with:", {
       amount: Number(data.amount),
-      bankCode: selectedAccount.bankCode,
-      accountNumber: selectedAccount.accountNumber,
+      bankAccountId: selectedAccount.id,
     });
     mutate(
       {
         amount: Number(data.amount),
-        bankCode: selectedAccount.bankCode,
-        accountNumber: selectedAccount.accountNumber,
+        bankAccountId: selectedAccount.id,
       },
       {
         onSuccess: () => {
@@ -590,10 +584,7 @@ function WithdrawSheet({
         },
         onError: (err: any) => {
           console.log("Withdrawal failed:", err);
-          setMessage(
-            err?.response?.data?.message ||
-              "An error occurred. Please try again."
-          );
+          setMessage("Withdrawal failed, try again later");
         },
       }
     );
@@ -788,6 +779,24 @@ function WithdrawSheet({
               {selectedAccount.accountNumber}
             </Text>
           </View>
+        </View>
+        {/* Show current balance */}
+        <View style={styles.balanceRow}>
+          <Text style={styles.balanceRowLabel}>Current Balance</Text>
+          {isBalanceLoading ? (
+            <ActivityIndicator
+              color="#fff"
+              size="small"
+              style={{ marginLeft: 8 }}
+            />
+          ) : (
+            <Text style={styles.balanceRowAmount}>
+              ₦
+              {balanceData?.data?.wallet?.balance?.toLocaleString("en-NG", {
+                minimumFractionDigits: 2,
+              }) ?? "0.00"}
+            </Text>
+          )}
         </View>
         <Controller
           control={amountControl}
@@ -1229,5 +1238,26 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 15,
     fontFamily: "Nunito-Regular",
+  },
+  balanceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#18181b",
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    alignSelf: "flex-start",
+  },
+  balanceRowLabel: {
+    color: "#9ca3af",
+    fontSize: RFValue(12),
+    fontFamily: "Nunito-Regular",
+    marginRight: 8,
+  },
+  balanceRowAmount: {
+    color: "#fff",
+    fontSize: RFValue(14),
+    fontFamily: "Nunito-Bold",
   },
 });
