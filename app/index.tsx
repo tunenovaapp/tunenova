@@ -33,7 +33,7 @@ const slides = [
   {
     image: require("../assets/images/onboarding-2.png"),
     title: "Discover",
-    subtitle: "the artist behind the music",
+    subtitle: "the artists behind the music",
   },
   {
     image: require("../assets/images/onboarding-3.png"),

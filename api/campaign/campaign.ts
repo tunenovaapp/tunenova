@@ -141,6 +141,7 @@ export interface Campaign {
   songTitle: string;
   songLink: string | null;
   genre: string;
+  artworkUrl: string | null;
   audioFileUrl: string;
   targetAudience: string[]; // stored in DB as JSON
   isPaid: boolean;
@@ -420,7 +421,7 @@ export function useDiscoverCampaign(
       ...options,
       onSuccess: (data, variables, context) => {
         /* ❗ Optional cache tweaks:
-           1.  Invalidate the “explore” lists so the just-discovered campaign disappears.
+           1.  Invalidate the "explore" lists so the just-discovered campaign disappears.
            2.  If you cache single campaigns, you could patch them here as well. */
         qc.invalidateQueries({ queryKey: ["explore"] });
 

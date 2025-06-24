@@ -1,4 +1,4 @@
-import { FontAwesome, Ionicons } from "@expo/vector-icons";
+import { FontAwesome, Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -56,6 +56,19 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <Ionicons
               name="wallet-outline"
+              size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="analytics"
+        options={{
+          title: "Analytics",
+          tabBarIcon: ({ color }) => (
+            <MaterialIcons
+              name="analytics"
               size={28}
               color={color}
             />

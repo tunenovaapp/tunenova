@@ -30,7 +30,6 @@ export default function ProfileScreen({ navigation }: any) {
       nav: "/(auth)/music-platform",
       param: "back",
     },
-    { id: "campaigns", label: "Song Campaigns", nav: "/(others)/my-campaigns" },
   ];
 
   const { data: profileData, isLoading, isError } = useProfile();

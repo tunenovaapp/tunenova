@@ -12,6 +12,7 @@ import {
 import { Entypo } from "@expo/vector-icons";
 import { UseQueryResult } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
+import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CampaignResponse, useCampaign } from "../../api/campaign/campaign";
 
@@ -72,13 +73,21 @@ export default function CampaignAnalyticsScreen() {
             color="white"
           />
         </TouchableOpacity>
-        <Text style={styles.h1}>Campaign Analytics</Text>
+        <Text
+          style={{
+            fontSize: RFValue(18),
+            fontFamily: "Nunito-ExtraBold",
+            color: "#fff",
+          }}
+        >
+          Campaign Analytics
+        </Text>
       </View>
 
       {/* -------------------- Metrics blocks ------------------------ */}
       <MetricBlock
         title="Total Listeners"
-        description="No of people who listened to your song on Soundhalla."
+        description="No of people who listened to your song on Truenova."
         value={listeners}
       />
 
@@ -163,7 +172,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     marginBottom: 36,
   },
-  metricTitle: { color: "#fff", fontSize: 22, fontFamily: "Nunito-Bold" },
+  metricTitle: {
+    color: "#fff",
+    fontSize: RFValue(16),
+    fontFamily: "Nunito-Medium",
+  },
   metricDesc: {
     color: "#d1d5db",
     marginTop: 6,
@@ -186,5 +199,5 @@ const styles = StyleSheet.create({
     marginTop: 40,
     marginBottom: 110, // keeps above tab bar
   },
-  ctaTxt: { color: "#fff", fontSize: 18, fontFamily: "Nunito-Bold" },
+  ctaTxt: { color: "#fff", fontSize: 18, fontFamily: "Nunito-Medium" },
 });

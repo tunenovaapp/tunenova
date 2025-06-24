@@ -1,8 +1,8 @@
-import { MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Image } from "expo-image";
 import * as Linking from "expo-linking";
+import type { ReactNode } from "react";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Dimensions,
@@ -16,11 +16,15 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
-  interpolate,
   interpolateColor,
+  runOnJS,
+  SharedValue,
+  useAnimatedProps,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withRepeat,
   withSequence,
@@ -28,13 +32,14 @@ import Animated, {
 } from "react-native-reanimated";
 import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import { useProfile } from "../../api/auth/auth";
 import {
   useDiscoverCampaign,
   useExploreCampaigns,
   useLikeCampaign,
   useListenToCampaign,
 } from "../../api/campaign/campaign";
-import { useBalance } from "../../api/wallet/wallet";
 import { Skeleton } from "./wallet";
 
 /**
@@ -46,10 +51,112 @@ import { Skeleton } from "./wallet";
  * ----------------------------------------------------------------------------
  */
 
-const { width } = Dimensions.get("window");
-const CLIP_DURATION = 7;
+const { width, height } = Dimensions.get("window");
 
 const AnimatedSafeAreaView = Animated.createAnimatedComponent(SafeAreaView);
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
+type RectangularProgressBarProps = {
+  progress: SharedValue<number>;
+  width?: number;
+  height?: number;
+  border?: number;
+  children: ReactNode;
+};
+
+// Gradient and sparkle progress bar
+function RectangularProgressBar({
+  progress,
+  width = 220,
+  height = 220,
+  border = 4,
+  children,
+}: RectangularProgressBarProps) {
+  // SVG progress bar
+  const perimeter = (width - border) * 2 + (height - border) * 2;
+  const animatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: perimeter * (1 - progress.value),
+  }));
+
+  return (
+    <View
+      style={{
+        width,
+        height,
+        alignSelf: "center",
+        justifyContent: "center",
+        alignItems: "center",
+        position: "relative",
+      }}
+    >
+      {/* SVG Gradient Progress Border */}
+      <Svg
+        width={width}
+        height={height}
+        style={{ position: "absolute", top: 0, left: 0 }}
+      >
+        <Defs>
+          <LinearGradient
+            id="grad"
+            x1="0"
+            y1="0"
+            x2={width}
+            y2={height}
+            gradientUnits="userSpaceOnUse"
+          >
+            <Stop
+              offset="0%"
+              stopColor="#ff003c"
+            />
+            <Stop
+              offset="50%"
+              stopColor="#ffb347"
+            />
+            <Stop
+              offset="100%"
+              stopColor="#ff00ff"
+            />
+          </LinearGradient>
+        </Defs>
+        <Rect
+          x={border / 2}
+          y={border / 2}
+          width={width - border}
+          height={height - border}
+          rx={32}
+          stroke="#fff"
+          strokeWidth={border}
+          fill="none"
+        />
+        <AnimatedRect
+          x={border / 2}
+          y={border / 2}
+          width={width - border}
+          height={height - border}
+          rx={32}
+          stroke="url(#grad)"
+          strokeWidth={border}
+          fill="none"
+          strokeDasharray={perimeter}
+          animatedProps={animatedProps}
+        />
+      </Svg>
+      {/* Album art and overlay */}
+      <View
+        style={{
+          width: width - border * 4,
+          height: height - border * 4,
+          overflow: "hidden",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 50,
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
 
 export default function ExplorePlayerScreen() {
   const [page, setPage] = useState(1);
@@ -60,8 +167,6 @@ export default function ExplorePlayerScreen() {
   const pagination = data?.data?.pagination;
   const [currentIdx, setCurrentIdx] = useState(0);
   const [showModal, setShowModal] = useState(false);
-  const progress = useSharedValue(0);
-  const [showPostLike, setShowPostLike] = useState(false);
   const colorProgress = useSharedValue(0);
   const [refreshing, setRefreshing] = useState(false);
   const [showRefreshHint, setShowRefreshHint] = useState(false);
@@ -72,10 +177,20 @@ export default function ExplorePlayerScreen() {
   const [showTipsModal, setShowTipsModal] = useState(false);
   const [currentTipIdx, setCurrentTipIdx] = useState(0);
   const tips = [
-    "Earn cash instantly when you listen to songs with the “sponsored” tag.",
+    "Earn cash instantly when you listen to songs with the 'sponsored' tag.",
     "Earn more cash when you invite friends",
-    "Tap the album art to pause or play the music.",
+    "Tap the logo to pause or play the music.",
   ];
+  const translateX = useSharedValue(0);
+
+  // Fetch user profile for greeting
+  const { data: profileData } = useProfile();
+  const userFirstLetter =
+    profileData?.data?.name?.trim()?.charAt(0)?.toUpperCase() || "C";
+
+  const animatedCardStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
 
   // Check if user has ever refreshed
   useEffect(() => {
@@ -116,11 +231,6 @@ export default function ExplorePlayerScreen() {
       return () => clearInterval(interval);
     }
   }, [hasRefreshed]);
-
-  const rHintStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: hintBounce.value }],
-    opacity: showRefreshHint ? 1 : 0,
-  }));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -191,28 +301,26 @@ export default function ExplorePlayerScreen() {
   const { mutate: listenMutate } = useListenToCampaign();
   const { mutate: likeMutate } = useLikeCampaign();
   const { mutate: discoverMutate } = useDiscoverCampaign();
-  const { data: balanceData, isLoading: isBalanceLoading } = useBalance();
 
   const campaign = campaigns[currentIdx];
   const player = useAudioPlayer(
     campaign?.audioFileUrl ? { uri: campaign.audioFileUrl } : undefined
   );
   const status = useAudioPlayerStatus(player);
+  const progress = useDerivedValue(() => {
+    if (status?.duration && status.duration > 0) {
+      return (status.currentTime ?? 0) / status.duration;
+    }
+    return 0;
+  });
 
-  // Play the current campaign's audio
+  // Play the current campaign's audio and animate progress bar to match duration (fix glitch)
   useEffect(() => {
     if (campaign?.audioFileUrl) {
       player.replace({ uri: campaign.audioFileUrl });
       player.seekTo(0);
       player.play();
-      // Mark as listened
       listenMutate({ id: campaign.id });
-      // Animate progress
-      progress.value = 0;
-      progress.value = withTiming(1, {
-        duration: CLIP_DURATION * 1000,
-        easing: Easing.linear,
-      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign?.audioFileUrl]);
@@ -240,18 +348,31 @@ export default function ExplorePlayerScreen() {
     }
   }, [currentIdx, campaigns.length, pagination, refetch]);
 
+  const gesture = Gesture.Pan()
+    .onUpdate((event) => {
+      translateX.value = event.translationX;
+    })
+    .onEnd((event) => {
+      if (Math.abs(event.translationX) > 100) {
+        translateX.value = withTiming(
+          Math.sign(event.translationX) * width,
+          { duration: 300 },
+          () => {
+            "worklet";
+            runOnJS(handleNext)();
+            translateX.value = 0;
+          }
+        );
+      } else {
+        translateX.value = withTiming(0, { duration: 300 });
+      }
+    });
+
   // No longer move to next on dislike
   const handleDislike = useCallback(() => {
     setShowModal(false);
     handleNext();
-    setShowPostLike(true);
   }, [player]);
-
-  // Skip to next campaign
-  const handleSkip = useCallback(() => {
-    setShowPostLike(false);
-    handleNext();
-  }, [handleNext]);
 
   // Open songLink in browser
   const handleDiscover = useCallback(() => {
@@ -291,22 +412,6 @@ export default function ExplorePlayerScreen() {
     setShowModal(false);
     handleNext();
   }, [campaign, likeMutate]);
-
-  // Animated width for the progress fill
-  const rProgress = useAnimatedStyle(() => ({
-    width: interpolate(
-      (status?.currentTime ?? 0) / (status?.duration || 1),
-      [0, 1],
-      [0, width - 48]
-    ),
-  }));
-
-  // Helper to format seconds as mm:ss
-  function formatTime(seconds: number) {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  }
 
   // Pause/resume player when like modal is shown/hidden
   useEffect(() => {
@@ -386,13 +491,12 @@ export default function ExplorePlayerScreen() {
 
   if (isError || !campaign) {
     return (
-      <AnimatedSafeAreaView
-        style={[styles.container, styles.screenGlow, rScreenGlowStyle]}
-      >
+      <AnimatedSafeAreaView style={[styles.container]}>
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
             justifyContent: "space-between",
+            paddingBottom: 20,
           }}
           refreshControl={
             <RefreshControl
@@ -409,50 +513,47 @@ export default function ExplorePlayerScreen() {
               contentFit="contain"
               contentPosition="center"
             />
-            <TouchableOpacity
-              style={styles.walletPill}
-              activeOpacity={0.8}
+
+            <Text
+              style={{
+                fontFamily: "Nunito-Medium",
+                color: "#fff",
+                fontSize: RFValue(20),
+              }}
             >
-              <MaterialIcons
-                name="account-balance-wallet"
-                size={18}
-                color="#000"
-              />
-              <Text style={styles.walletText}>
-                ₦
-                {isBalanceLoading
-                  ? "..."
-                  : balanceData?.data?.wallet?.balance?.toLocaleString(
-                      "en-NG",
-                      {
-                        style: "currency",
-                        currency: "NGN",
-                        minimumFractionDigits: 0,
-                      }
-                    ) ?? "N0"}
-              </Text>
-            </TouchableOpacity>
+              {`Hi, ${userFirstLetter}!`}
+            </Text>
           </View>
 
-          {/* Album art */}
-          <View style={styles.heroContainer}>
-            <Animated.Image
+          {/* Album art with square progress bar */}
+          <RectangularProgressBar
+            progress={progress}
+            width={width - 48}
+            height={height * 0.5}
+            border={4}
+          >
+            <Image
               source={require("../../assets/images/Asset 2@4x-8.png")}
-              style={[styles.hero, thumpAnimationStyle]}
+              style={[
+                {
+                  height: "35%",
+                  width: "35%",
+                  marginHorizontal: "auto",
+                  marginBottom: 30,
+                },
+                thumpAnimationStyle,
+              ]}
+              contentFit="contain"
+              contentPosition="center"
             />
-          </View>
+            <View style={styles.innerMetaContainer}>
+              <Text style={[styles.title]}>No campaign available</Text>
+            </View>
+          </RectangularProgressBar>
 
-          {/* Track meta + progress ---------------------------------------- */}
+          {/* Track meta ---------------------------------------- */}
           <View style={styles.metaWrapper}>
-            <Text style={styles.title}>No campaign available</Text>
-            {/* No sponsored label or progress bar */}
-            <View style={styles.progressTrack}>
-              <Animated.View style={[styles.progressFill, { width: 0 }]} />
-            </View>
-            <View style={styles.timeRow}>
-              <Text style={styles.time}>0:00</Text>
-              <Text style={styles.time}>-0:00</Text>
-            </View>
+            <View style={styles.postLikeRow} />
           </View>
         </ScrollView>
       </AnimatedSafeAreaView>
@@ -466,7 +567,11 @@ export default function ExplorePlayerScreen() {
       {/* Pull to refresh hint - absolutely positioned at the top */}
 
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "space-between" }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "space-between",
+          paddingBottom: 20,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -482,88 +587,85 @@ export default function ExplorePlayerScreen() {
             contentFit="contain"
             contentPosition="center"
           />
-          <TouchableOpacity
-            style={styles.walletPill}
-            activeOpacity={0.8}
+
+          <Text
+            style={{
+              fontFamily: "Nunito-Medium",
+              color: "#fff",
+              fontSize: RFValue(20),
+            }}
           >
-            <MaterialIcons
-              name="account-balance-wallet"
-              size={18}
-              color="#000"
-            />
-            <Text style={styles.walletText}>
-              {isBalanceLoading
-                ? "..."
-                : balanceData?.data?.wallet?.balance?.toLocaleString("en-NG", {
-                    style: "currency",
-                    currency: "NGN",
-                    minimumFractionDigits: 0,
-                  }) ?? "N0"}
-            </Text>
-          </TouchableOpacity>
+            {`Hi, ${userFirstLetter}!`}
+          </Text>
         </View>
 
-        {/* Album art */}
-        <Pressable
-          style={styles.heroContainer}
-          onPress={() => {
-            if (isPaused) {
-              setIsPaused(false);
-              player.play();
-            } else {
-              setIsPaused(true);
-              player.pause();
-            }
-          }}
-        >
-          <Animated.Image
-            source={require("../../assets/images/Asset 2@4x-8.png")}
-            style={[
-              styles.hero,
-              thumpAnimationStyle,
-              isPaused && { opacity: 0.5 }, // Dim when paused
-            ]}
-          />
-          {isPaused && (
-            <View
-              style={styles.heroOverlay}
-              pointerEvents="none"
+        {/* Album art with square progress bar */}
+        <GestureDetector gesture={gesture}>
+          <Animated.View style={animatedCardStyle}>
+            <RectangularProgressBar
+              progress={progress}
+              width={width - 48}
+              height={height * 0.5}
+              border={5}
             >
-              <Text style={styles.heroOverlayText}>Paused</Text>
-            </View>
-          )}
-        </Pressable>
+              <Pressable
+                style={styles.pressableHero}
+                onPress={() => {
+                  if (isPaused) {
+                    setIsPaused(false);
+                    player.play();
+                  } else {
+                    setIsPaused(true);
+                    player.pause();
+                  }
+                }}
+              >
+                <Animated.Image
+                  source={
+                    campaign.artworkUrl
+                      ? { uri: campaign.artworkUrl }
+                      : require("../../assets/images/Asset 2@4x-8.png")
+                  }
+                  style={[
+                    styles.hero,
+                    thumpAnimationStyle,
+                    isPaused && { opacity: 0.5 },
+                  ]}
+                  resizeMode="contain"
+                />
+                {isPaused && (
+                  <View
+                    style={styles.heroOverlay}
+                    pointerEvents="none"
+                  >
+                    <Text style={styles.heroOverlayText}>Paused</Text>
+                  </View>
+                )}
+              </Pressable>
+              <View style={styles.innerMetaContainer}>
+                <Text
+                  style={[styles.title, { marginBottom: 4 }]}
+                  numberOfLines={1}
+                >
+                  {campaign.songTitle}
+                </Text>
+                {!campaign.isPaid && (
+                  <Text style={[styles.sponsored, { marginBottom: 0 }]}>
+                    Sponsored
+                  </Text>
+                )}
+              </View>
+            </RectangularProgressBar>
+          </Animated.View>
+        </GestureDetector>
 
-        {/* Track meta + progress ---------------------------------------- */}
-        <View style={styles.metaWrapper}>
-          <Text style={styles.title}>{campaign.songTitle}</Text>
-          {campaign.isPaid && <Text style={styles.sponsored}>Sponsored</Text>}
-          <View style={styles.progressTrack}>
-            <Animated.View style={[styles.progressFill, rProgress]} />
-          </View>
-          <View style={styles.timeRow}>
-            <Text style={styles.time}>
-              {formatTime(status?.currentTime ?? 0)}
-            </Text>
-            <Text style={styles.time}>
-              -{formatTime(status?.duration ?? 0)}
-            </Text>
-          </View>
-
-          <View style={styles.postLikeRow}>
-            <TouchableOpacity
-              style={styles.skipBtn}
-              onPress={handleSkip}
-            >
-              <Text style={styles.skipBtnText}>Next</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.discoverBtn}
-              onPress={handleDiscover}
-            >
-              <Text style={styles.discoverBtnText}>Discover</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.postLikeRow}>
+          <TouchableOpacity
+            style={styles.discoverBtn}
+            onPress={handleDiscover}
+          >
+            <Text style={styles.discoverBtnText}>Tap to Discover</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Like Modal */}
@@ -608,7 +710,7 @@ export default function ExplorePlayerScreen() {
 
         {/* Tips Modal for first-time registration */}
         <Modal
-          visible={true}
+          visible={showTipsModal}
           transparent
           animationType="fade"
           onRequestClose={() => {}}
@@ -648,6 +750,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000",
     paddingTop: 10,
+    paddingBottom: 40,
   },
   headerRow: {
     flexDirection: "row",
@@ -680,49 +783,49 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "center",
-    borderRadius: 24,
+  },
+  pressableHero: {
+    height: "35%",
+    width: "35%",
   },
   hero: {
-    width: "35%",
-    height: "35%",
+    width: "100%",
+    height: "100%",
+    marginHorizontal: "auto",
   },
   heroShadow: {
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
-    shadowRadius: 25,
     elevation: 20,
   },
   screenGlow: {
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
-    shadowRadius: 150,
     elevation: 50,
   },
   metaWrapper: {
     paddingHorizontal: 24,
     paddingBottom: 50,
   },
+  innerMetaContainer: {
+    position: "absolute",
+    bottom: 30,
+    left: 20,
+    right: 20,
+    alignItems: "center",
+  },
   title: {
-    fontSize: RFValue(24),
+    fontSize: RFValue(22),
     color: "#fff",
     marginBottom: 5,
-    fontFamily: "Nunito-Medium",
+    fontFamily: "Nunito-Bold",
+    textAlign: "center",
   },
   sponsored: {
     color: "#9ca3af",
     marginBottom: 16,
     fontFamily: "Nunito-Regular",
-  },
-  progressTrack: {
-    height: 4,
-    width: "100%",
-    backgroundColor: "#374151",
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: 4,
-    backgroundColor: "#ff003c",
+    textAlign: "center",
   },
   timeRow: {
     flexDirection: "row",
@@ -748,8 +851,8 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: "#000",
-    fontSize: RFValue(20),
-    fontFamily: "Nunito-Bold",
+    fontSize: RFValue(18),
+    fontFamily: "Nunito-Medium",
     textAlign: "center",
   },
   modalBtn: {
@@ -766,11 +869,11 @@ const styles = StyleSheet.create({
   },
   postLikeRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
-    marginTop: 24,
+    marginTop: 12,
     marginBottom: 16,
-    gap: 16,
+    paddingHorizontal: 24,
   },
   skipBtn: {
     backgroundColor: "#08090A",
@@ -851,7 +954,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.18)",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 24,
+    borderRadius: 28,
   },
   heroOverlayText: {
     color: "#fff",

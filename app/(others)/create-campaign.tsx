@@ -38,38 +38,50 @@ type FormShape = {
   budget?: string;
 };
 
-const schema = yup.object({
-  songTitle: yup.string().required("Title is required"),
-  songLink: yup
-    .string()
-    .url("Must be a valid URL")
-    .required("Song link is required"),
-  genre: yup.string().required("Select a genre"),
-  snippet: yup
-    .mixed<DocumentPicker.DocumentPickerAsset>()
-    .required("Snippet is required")
-    .test("required", "Snippet is required", (val) => !!val)
-    .test(
-      "size",
-      "Max size is 10 MB",
-      (file) => !file || (file.size ?? 0) <= 5 * 1024 * 1024
-    ),
-  audience: yup
-    .array()
-    .of(yup.string())
-    .min(1, "Select at least one audience type"),
-  budget: yup
-    .string()
-    .optional()
-    .matches(/^[\d]+(\.\d{1,2})?$/, "Enter a valid number")
-    .test("min", "Minimum amount is ₦20", (value) => {
-      if (!value) return true; // Allow empty since it's optional
-      const num = parseFloat(value);
-      return !isNaN(num) && num >= 20;
-    }),
-});
+const getValidationSchema = (campaignType: any) =>
+  yup.lazy(() =>
+    yup.object({
+      songTitle: yup.string().required("Title is required"),
+      songLink: yup
+        .string()
+        .url("Must be a valid URL")
+        .required("Song link is required"),
+      genre: yup.string().required("Select a genre"),
+      snippet: yup
+        .mixed<DocumentPicker.DocumentPickerAsset>()
+        .test("required", "Snippet is required", (file) => file && !!file.name)
+        .test(
+          "size",
+          "Max size is 10 MB",
+          (file) => !file || (file.size ?? 0) <= 5 * 1024 * 1024
+        ),
+      audience:
+        campaignType !== "free"
+          ? yup
+              .array()
+              .of(yup.string().defined())
+              .min(1, "Select at least one audience type")
+              .required("Select at least one audience type")
+          : yup.array().of(yup.string().defined()).optional(),
+      budget: yup
+        .string()
+        .optional()
+        .matches(/^[\d]+(\.\d{1,2})?$/, "Enter a valid number")
+        .test("min", "Minimum amount is ₦20", (value) => {
+          if (!value) return true; // Allow empty since it's optional
+          const num = parseFloat(value);
+          return !isNaN(num) && num >= 20;
+        }),
+    })
+  );
 
 export default function CreatePaidCampaignScreen() {
+  const { campaignType } = useLocalSearchParams();
+  const { bottom, top } = useSafeAreaInsets();
+  const [message, setMessage] = React.useState<string | null>(null);
+  const { mutate, isPending, isSuccess, isError, error } = useCreateCampaign();
+  const router = useRouter();
+
   const {
     control,
     handleSubmit,
@@ -77,23 +89,17 @@ export default function CreatePaidCampaignScreen() {
     watch,
     formState: { isValid, errors },
   } = useForm<FormShape>({
-    resolver: yupResolver(schema) as any,
+    resolver: yupResolver(getValidationSchema(campaignType)) as any,
     mode: "onChange",
     defaultValues: {
       songTitle: "",
       songLink: "",
       genre: "",
       snippet: {} as DocumentPicker.DocumentPickerAsset,
-      audience: [],
+      audience: campaignType === "free" ? ["spotify"] : [],
       budget: undefined,
     },
   });
-
-  const { campaignType } = useLocalSearchParams();
-  const { bottom, top } = useSafeAreaInsets();
-  const [message, setMessage] = React.useState<string | null>(null);
-  const { mutate, isPending, isSuccess, isError, error } = useCreateCampaign();
-  const router = useRouter();
 
   /* --------------------------------------------------------------- */
   /*  Animated Pay-Now button                                        */
@@ -155,10 +161,10 @@ export default function CreatePaidCampaignScreen() {
           if (res.data.paystack?.paymentUrl) {
             await WebBrowser.openBrowserAsync(res.data.paystack.paymentUrl);
             // After browser is closed, navigate to a confirmation page
-            router.replace("/(others)/my-campaigns");
+            router.replace("/(tabs)/analytics");
           } else {
             // If no payment URL, just go to success page
-            router.replace("/(others)/my-campaigns");
+            router.replace("/(tabs)/analytics");
           }
         }, 1000);
       },
@@ -304,32 +310,36 @@ export default function CreatePaidCampaignScreen() {
           )}
 
           {/* -------- Target audience picker ---------- */}
-          <FieldLabel label="Target Audience" />
-          <Text style={styles.helper}>
-            Select the type of audience on Soundhalla you want to target
-          </Text>
-          <Controller
-            control={control}
-            name="audience"
-            render={({ field }) => (
-              <PickerInput
-                placeholder="Choose here"
-                value={field.value}
-                onChange={field.onChange}
-                items={[
-                  { label: "Spotify", value: "spotify" },
-                  { label: "Youtube", value: "youtube" },
-                  { label: "Apple-music", value: "apple-music" },
-                  { label: "Boomplay", value: "boomplay" },
-                  { label: "Audiomack", value: "audiomack" },
-                  { label: "Tidal", value: "tidal" },
-                  { label: "Deezer", value: "deezer" },
-                ]}
-                error={errors.audience?.message}
-                multiSelect
+          {campaignType !== "free" && (
+            <>
+              <FieldLabel label="Target Audience" />
+              <Text style={styles.helper}>
+                Select the type of audience on Truenova you want to target
+              </Text>
+              <Controller
+                control={control}
+                name="audience"
+                render={({ field }) => (
+                  <PickerInput
+                    placeholder="Choose here"
+                    value={field.value}
+                    onChange={field.onChange}
+                    items={[
+                      { label: "Spotify", value: "spotify" },
+                      { label: "Youtube", value: "youtube" },
+                      { label: "Apple-music", value: "apple-music" },
+                      { label: "Boomplay", value: "boomplay" },
+                      { label: "Audiomack", value: "audiomack" },
+                      { label: "Tidal", value: "tidal" },
+                      { label: "Deezer", value: "deezer" },
+                    ]}
+                    error={errors.audience?.message}
+                    multiSelect
+                  />
+                )}
               />
-            )}
-          />
+            </>
+          )}
 
           {/* -------------- Budget -------------------- */}
           {campaignType !== "free" ? (

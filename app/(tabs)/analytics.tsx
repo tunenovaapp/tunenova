@@ -1,4 +1,4 @@
-import { Entypo, Feather, Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import {
@@ -13,6 +13,7 @@ import {
 import Animated, { FadeIn } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMyCampaigns } from "../../api/campaign/campaign";
+import { RFValue } from "react-native-responsive-fontsize";
 
 export default function CampaignsScreen() {
   const { data, isLoading, error } = useMyCampaigns();
@@ -26,21 +27,11 @@ export default function CampaignsScreen() {
   const Header = () => (
     <View
       style={{
-        flexDirection: "row",
-        gap: 10,
-        alignItems: "center",
         paddingHorizontal: 24,
         marginTop: 10,
         marginBottom: 20,
       }}
     >
-      <TouchableOpacity onPress={() => router.back()}>
-        <Entypo
-          name="chevron-left"
-          size={24}
-          color="white"
-        />
-      </TouchableOpacity>
       <Text style={styles.h1}>Your Campaigns</Text>
     </View>
   );
@@ -53,7 +44,7 @@ export default function CampaignsScreen() {
       <Ionicons
         name="clipboard-outline"
         size={64}
-        color="#737373"
+        color="#a1a1aa"
       />
       <Text style={styles.emptyTitle}>No active campaigns</Text>
       <Text style={styles.emptySub}>
@@ -109,7 +100,7 @@ export default function CampaignsScreen() {
             <Feather
               name="chevron-right"
               size={22}
-              color="#000"
+              color="#fff"
             />
           </View>
 
@@ -193,7 +184,7 @@ export default function CampaignsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#000" },
   h1: {
-    fontSize: 24,
+    fontSize: RFValue(22),
     fontFamily: "Nunito-Bold",
     color: "#fff",
     textAlign: "center",
@@ -201,7 +192,7 @@ const styles = StyleSheet.create({
 
   /* ---------- card ---------- */
   card: {
-    backgroundColor: "#fafafa",
+    backgroundColor: "#1f1f1f",
     borderRadius: 14,
     padding: 20,
     marginHorizontal: 24,
@@ -211,18 +202,23 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  cardNo: { color: "#737373", fontFamily: "Nunito-Bold" },
-  cardTitle: { fontSize: 20, fontFamily: "Nunito-Bold", marginVertical: 6 },
+  cardNo: { color: "#a1a1aa", fontFamily: "Nunito-Bold" },
+  cardTitle: {
+    fontSize: 20,
+    fontFamily: "Nunito-Bold",
+    marginVertical: 6,
+    color: "#fff",
+  },
   budget: {
-    color: "#6b7280",
+    color: "#a1a1aa",
     marginBottom: 12,
     fontFamily: "Nunito-Regular",
   },
-  budgetAmt: { color: "#000", fontFamily: "Nunito-Bold" },
+  budgetAmt: { color: "#fff", fontFamily: "Nunito-Bold" },
   progressTrack: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#d4d4d4",
+    backgroundColor: "#3f3f46",
     overflow: "hidden",
   },
   progressFill: {
@@ -235,12 +231,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   metaLeft: {
-    color: "#737373",
+    color: "#a1a1aa",
     fontSize: 13,
     fontFamily: "Nunito-Regular",
   },
   metaRight: {
-    color: "#737373",
+    color: "#a1a1aa",
     fontSize: 13,
     fontFamily: "Nunito-Regular",
   },
@@ -249,7 +245,7 @@ const styles = StyleSheet.create({
   emptyCard: {
     alignSelf: "center",
     width: "85%",
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#1f1f1f",
     borderRadius: 20,
     paddingVertical: 60,
     alignItems: "center",
@@ -258,11 +254,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: "Nunito-Bold",
     marginTop: 18,
-    color: "#000",
+    color: "#fff",
   },
   emptySub: {
     textAlign: "center",
-    color: "#737373",
+    color: "#a1a1aa",
     marginTop: 6,
     lineHeight: 20,
     fontFamily: "Nunito-Regular",

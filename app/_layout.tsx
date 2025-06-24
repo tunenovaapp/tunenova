@@ -4,6 +4,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -36,24 +37,26 @@ export default function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: {
-            backgroundColor: "#000",
-          },
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(others)" />
-      </Stack>
-      <StatusBar
-        style="light"
-        translucent={true}
-      />
-    </QueryClientProvider>
+    <GestureHandlerRootView>
+      <QueryClientProvider client={queryClient}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: {
+              backgroundColor: "#000",
+            },
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(others)" />
+        </Stack>
+        <StatusBar
+          style="light"
+          translucent={true}
+        />
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }

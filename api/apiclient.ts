@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios, { AxiosRequestConfig } from "axios";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -83,7 +82,6 @@ export const setRefreshToken = async (token: string) => {
 export const purgeTokens = async () => {
   await SecureStore.deleteItemAsync(ACCESS_KEY);
   await SecureStore.deleteItemAsync(REFRESH_KEY);
-  await AsyncStorage.clear();
   delete api.defaults.headers.common.Authorization;
 };
 
