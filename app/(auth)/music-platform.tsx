@@ -19,7 +19,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Animated from "react-native-reanimated";
 import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -203,7 +202,6 @@ export default function MusicPlatformScreen() {
             if (canOpen) found.push(platform);
           }
         } catch (e) {
-          // ignore errors, just skip
         }
       }
       setSelected((prev) => Array.from(new Set([...prev, ...found])));
@@ -228,7 +226,7 @@ export default function MusicPlatformScreen() {
         </View>
 
         {/* Badge */}
-        <Animated.View
+        <View
           style={[
             styles.badgeWrapper,
             active && { backgroundColor: "#ff003c" },
@@ -241,7 +239,7 @@ export default function MusicPlatformScreen() {
               color="#fff"
             />
           )}
-        </Animated.View>
+        </View>
       </TouchableOpacity>
     );
   };

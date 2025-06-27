@@ -2,6 +2,7 @@
 import { purgeTokens } from "@/api/apiclient";
 import { useProfile } from "@/api/auth/auth";
 import { Feather, Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React from "react";
 import {
@@ -81,6 +82,7 @@ export default function ProfileScreen({ navigation }: any) {
         activeOpacity={0.9}
         onPress={async () => {
           await purgeTokens();
+          await AsyncStorage.removeItem("hasSeenTips");
           router.replace("/(auth)/login");
         }}
       >

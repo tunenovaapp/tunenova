@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useState } from "react";
@@ -95,9 +94,8 @@ function useSlideAnimatedStyles(progress: any) {
 }
 
 export default function OnboardingScreen() {
-  const navigation = useNavigation();
   const [index, setIndex] = useState(0);
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(false);
   const progress = useSharedValue(0);
 
   // On mount, check onboarding and auth state
@@ -146,7 +144,19 @@ export default function OnboardingScreen() {
           <Animated.Image
             source={slide.image}
             resizeMode="contain"
-            style={[styles.image, rImages[i]]}
+            style={[
+              styles.image,
+              i < 2
+                ? {
+                    width: width * 0.5,
+                    height: height * 0.5,
+                  }
+                : {
+                    width: width * 0.8,
+                    height: height * 0.8,
+                  },
+              rImages[i],
+            ]}
           />
 
           <Animated.View style={[styles.textWrapper, rTexts[i]]}>

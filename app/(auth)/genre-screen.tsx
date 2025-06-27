@@ -128,7 +128,7 @@ export default function GenresScreen() {
           <Text style={styles.cardTitle}>{item.title}</Text>
 
           {/* Tick badge */}
-          <Animated.View
+          <View
             style={[
               styles.badge,
               active && {
@@ -145,7 +145,7 @@ export default function GenresScreen() {
                 />
               </>
             )}
-          </Animated.View>
+          </View>
         </ImageBackground>
       </TouchableOpacity>
     );

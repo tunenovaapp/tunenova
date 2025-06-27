@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Linking,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,7 +15,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import Animated, {
+import {
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -26,7 +27,6 @@ import { useCreateCampaign } from "@/api/campaign/campaign";
 import CustomPicker from "@/components/CustomPicker";
 import { Entypo, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type FormShape = {
@@ -67,10 +67,10 @@ const getValidationSchema = (campaignType: any) =>
         .string()
         .optional()
         .matches(/^[\d]+(\.\d{1,2})?$/, "Enter a valid number")
-        .test("min", "Minimum amount is ₦20", (value) => {
+        .test("min", "Minimum amount is ₦1500", (value) => {
           if (!value) return true; // Allow empty since it's optional
           const num = parseFloat(value);
-          return !isNaN(num) && num >= 20;
+          return !isNaN(num) && num >= 1500;
         }),
     })
   );
@@ -137,7 +137,9 @@ export default function CreatePaidCampaignScreen() {
     const payload = {
       songTitle: data.songTitle,
       genre: data.genre,
-      targetAudience: data.audience,
+      targetAudience: Array.isArray(data.audience)
+        ? data.audience
+        : [data.audience],
       audioFile: {
         uri: data.snippet.uri,
         name: data.snippet.name,
@@ -158,12 +160,18 @@ export default function CreatePaidCampaignScreen() {
       onSuccess: async (res) => {
         setMessage("Campaign created successfully!");
         setTimeout(async () => {
-          if (res.data.paystack?.paymentUrl) {
-            await WebBrowser.openBrowserAsync(res.data.paystack.paymentUrl);
-            // After browser is closed, navigate to a confirmation page
-            router.replace("/(tabs)/analytics");
+          if (res.data.virtualAccount?.accountNumber) {
+            // Instead of opening browser, route to virtual account details screen
+            router.replace({
+              pathname: "/(others)/virtual-account-details",
+              params: {
+                accountNumber: res.data.virtualAccount?.accountNumber || "",
+                bankName: res.data.virtualAccount?.bankName || "",
+                accountName: res.data.virtualAccount?.accountName || "",
+                budget: data.budget,
+              },
+            });
           } else {
-            // If no payment URL, just go to success page
             router.replace("/(tabs)/analytics");
           }
         }, 1000);
@@ -193,10 +201,9 @@ export default function CreatePaidCampaignScreen() {
     <KeyboardAvoidingView
       style={{ flex: 1, paddingTop: top }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={90}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <Animated.ScrollView
+        <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.container}
         >
@@ -314,27 +321,24 @@ export default function CreatePaidCampaignScreen() {
             <>
               <FieldLabel label="Target Audience" />
               <Text style={styles.helper}>
-                Select the type of audience on Truenova you want to target
+                Select the type of audience on Tunenova you want to target
               </Text>
               <Controller
                 control={control}
                 name="audience"
                 render={({ field }) => (
                   <PickerInput
-                    placeholder="Choose here"
+                    placeholder="Choose one"
                     value={field.value}
-                    onChange={field.onChange}
+                    onChange={(val) => field.onChange([val])}
                     items={[
                       { label: "Spotify", value: "spotify" },
                       { label: "Youtube", value: "youtube" },
-                      { label: "Apple-music", value: "apple-music" },
+                      { label: "Apple Music", value: "apple-music" },
                       { label: "Boomplay", value: "boomplay" },
-                      { label: "Audiomack", value: "audiomack" },
-                      { label: "Tidal", value: "tidal" },
-                      { label: "Deezer", value: "deezer" },
                     ]}
                     error={errors.audience?.message}
-                    multiSelect
+                    arrayValue={true}
                   />
                 )}
               />
@@ -397,7 +401,7 @@ export default function CreatePaidCampaignScreen() {
           )}
 
           {/* -------------- Pay Now ------------------- */}
-          <Animated.View style={[styles.payWrapper, rPayStyle]}>
+          <View style={[styles.payWrapper, rPayStyle]}>
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.payBtn}
@@ -423,8 +427,8 @@ export default function CreatePaidCampaignScreen() {
                 {message}
               </Text>
             )}
-          </Animated.View>
-        </Animated.ScrollView>
+          </View>
+        </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
@@ -458,6 +462,7 @@ const PickerInput = ({
   placeholder,
   error,
   multiSelect,
+  arrayValue,
 }: {
   value: string[] | string;
   onChange: (v: any) => void;
@@ -465,6 +470,7 @@ const PickerInput = ({
   placeholder: string;
   error?: string;
   multiSelect?: boolean;
+  arrayValue?: boolean;
 }) => (
   <View style={{ marginBottom: 12 }}>
     <CustomPicker
@@ -472,8 +478,9 @@ const PickerInput = ({
       onChange={onChange}
       value={value}
       placeholder={placeholder}
-      modalTitle={`Select ${placeholder}`}
+      modalTitle={`${placeholder}`}
       multiSelect={multiSelect}
+      arrayValue={arrayValue}
     />
     {error ? <Text style={styles.errorText}>{error}</Text> : null}
   </View>
@@ -485,7 +492,7 @@ const PickerInput = ({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
-    paddingBottom: 150,
+    paddingBottom: 50,
     backgroundColor: "#000",
     paddingTop: 10,
   },

@@ -11,10 +11,13 @@ import {
 
 import { Entypo } from "@expo/vector-icons";
 import { UseQueryResult } from "@tanstack/react-query";
-import * as Linking from "expo-linking";
 import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CampaignResponse, useCampaign } from "../../api/campaign/campaign";
+import {
+  CampaignResponse,
+  useCampaign,
+  useDeleteCampaign,
+} from "../../api/campaign/campaign";
 
 export default function CampaignAnalyticsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,6 +25,8 @@ export default function CampaignAnalyticsScreen() {
     CampaignResponse,
     any
   >;
+
+  const deleteMutation = useDeleteCampaign();
 
   const campaign = data?.data;
   const listeners = campaign?.analytics?.listens ?? 0;
@@ -54,7 +59,6 @@ export default function CampaignAnalyticsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
-
       {/* --------------------------- HEADER ------------------------- */}
       <View
         style={{
@@ -83,51 +87,77 @@ export default function CampaignAnalyticsScreen() {
           Campaign Analytics
         </Text>
       </View>
-
       {/* -------------------- Metrics blocks ------------------------ */}
       <MetricBlock
         title="Total Listeners"
-        description="No of people who listened to your song on Truenova."
+        description="No of people who listened to your song on Tunenova."
         value={listeners}
       />
-
       <MetricBlock
         title="Total Fans"
         description="No of people who liked & discovered your song on the platform you're promoting."
         value={fans}
       />
-
       {/* Paystack payment button if paid and pending */}
-      {campaign?.isPaid &&
-        campaign?.status === "pending" &&
-        campaign?.paystackPaymentUrl && (
-          <TouchableOpacity
-            style={[
-              styles.cta,
-              {
-                backgroundColor: "#fff",
-                borderWidth: 1,
-                borderColor: "#ff003c",
-                marginBottom: 10,
+      {campaign?.isPaid && campaign?.status === "pending" && (
+        <TouchableOpacity
+          style={[
+            styles.cta,
+            {
+              backgroundColor: "#fff",
+              borderWidth: 1,
+              borderColor: "#ff003c",
+              marginBottom: 10,
+            },
+          ]}
+          activeOpacity={0.85}
+          onPress={() => {
+            router.replace({
+              pathname: "/(others)/virtual-account-details",
+              params: {
+                accountNumber: data?.data?.virtualAccountNumber || "",
+                bankName: data?.data?.virtualAccountBank || "",
+                accountName: data?.data?.virtualAccountName || "",
+                budget: data?.data.budget,
               },
-            ]}
-            activeOpacity={0.85}
-            onPress={() => Linking.openURL(campaign.paystackPaymentUrl)}
-          >
-            <Text style={[styles.ctaTxt, { color: "#ff003c" }]}>
-              Complete Payment
-            </Text>
-          </TouchableOpacity>
-        )}
-
+            });
+          }}
+        >
+          <Text style={[styles.ctaTxt, { color: "#ff003c" }]}>
+            Complete Payment
+          </Text>
+        </TouchableOpacity>
+      )}
       {/* -------------------- CTA ---------------------------------- */}
-      <TouchableOpacity
-        style={styles.cta}
-        activeOpacity={0.85}
-        onPress={() => router.push("/(tabs)/promote")}
-      >
-        <Text style={styles.ctaTxt}>Promote your Song</Text>
-      </TouchableOpacity>
+      {data?.data.isPaid && data.data.paymentStatus === "pending" ? (
+        <TouchableOpacity
+          style={styles.cta}
+          activeOpacity={0.85}
+          disabled={deleteMutation.status === "pending"}
+          onPress={async () => {
+            try {
+              await deleteMutation.mutateAsync(id);
+              router.replace("/(tabs)/promote");
+            } catch (err: any) {
+              alert(err.message || "Failed to delete campaign");
+            }
+          }}
+        >
+          <Text style={styles.ctaTxt}>
+            {deleteMutation.status === "pending"
+              ? "Deleting..."
+              : "Delete Draft"}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={styles.cta}
+          activeOpacity={0.85}
+          onPress={() => router.push("/(tabs)/promote")}
+        >
+          <Text style={styles.ctaTxt}>Promote Your Song</Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -196,7 +226,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 18,
     alignItems: "center",
-    marginTop: 40,
+    marginTop: 20,
     marginBottom: 110, // keeps above tab bar
   },
   ctaTxt: { color: "#fff", fontSize: 18, fontFamily: "Nunito-Medium" },

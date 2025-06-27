@@ -22,6 +22,7 @@ type CustomPickerProps = {
   placeholder?: string;
   modalTitle?: string;
   multiSelect?: boolean;
+  arrayValue?: boolean; // If true, value is an array for multi-select
 };
 
 export default function CustomPicker({
@@ -31,13 +32,15 @@ export default function CustomPicker({
   placeholder,
   modalTitle,
   multiSelect = false,
+  arrayValue = false,
 }: CustomPickerProps) {
   const [isPickerVisible, setPickerVisible] = useState(false);
-  const selectedLabels = multiSelect
-    ? options
-        .filter((item) => Array.isArray(value) && value.includes(item.value))
-        .map((item) => item.label)
-    : [options.find((item) => item.value === value)?.label].filter(Boolean);
+  const selectedLabels =
+    multiSelect || arrayValue
+      ? options
+          .filter((item) => Array.isArray(value) && value.includes(item.value))
+          .map((item) => item.label)
+      : [options.find((item) => item.value === value)?.label].filter(Boolean);
 
   const handleSelect = (itemValue: any) => {
     if (multiSelect) {
@@ -65,6 +68,8 @@ export default function CustomPicker({
             styles.pickerText,
             { color: selectedLabels.length ? "#fff" : "#6b7280" },
           ]}
+          numberOfLines={2}
+          ellipsizeMode="tail"
         >
           {selectedLabels.length > 0
             ? selectedLabels.join(", ")
@@ -95,9 +100,46 @@ export default function CustomPicker({
               {modalTitle || "Select an option"}
             </Text>
             <FlatList
-              data={options}
+              data={
+                multiSelect
+                  ? [{ label: "Select All", value: "__ALL__" }, ...options]
+                  : options
+              }
               keyExtractor={(item) => item.value.toString()}
-              renderItem={({ item }) => {
+              renderItem={({ item, index }) => {
+                if (multiSelect && item.value === "__ALL__") {
+                  const allSelected =
+                    Array.isArray(value) && value.length === options.length;
+                  return (
+                    <TouchableOpacity
+                      style={styles.modalItem}
+                      onPress={() => {
+                        if (allSelected) {
+                          onChange([]);
+                        } else {
+                          onChange(options.map((opt) => opt.value));
+                        }
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <Text style={styles.modalItemText}>Select All</Text>
+                        {allSelected && (
+                          <Ionicons
+                            name="checkmark"
+                            size={18}
+                            color="#34d399"
+                          />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
                 const isSelected = multiSelect
                   ? Array.isArray(value) && value.includes(item.value)
                   : value === item.value;

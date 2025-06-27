@@ -1,11 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Image } from "expo-image";
-import * as Linking from "expo-linking";
+import { usePathname } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import type { ReactNode } from "react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Dimensions,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -19,9 +28,12 @@ import {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
-  interpolateColor,
   runOnJS,
   SharedValue,
+  SlideInLeft,
+  SlideInRight,
+  SlideOutLeft,
+  SlideOutRight,
   useAnimatedProps,
   useAnimatedStyle,
   useDerivedValue,
@@ -53,7 +65,6 @@ import { Skeleton } from "./wallet";
 
 const { width, height } = Dimensions.get("window");
 
-const AnimatedSafeAreaView = Animated.createAnimatedComponent(SafeAreaView);
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 type RectangularProgressBarProps = {
@@ -88,6 +99,7 @@ function RectangularProgressBar({
         alignItems: "center",
         position: "relative",
       }}
+      collapsable={false}
     >
       {/* SVG Gradient Progress Border */}
       <Svg
@@ -124,7 +136,7 @@ function RectangularProgressBar({
           width={width - border}
           height={height - border}
           rx={32}
-          stroke="#fff"
+          stroke="url(#grad)"
           strokeWidth={border}
           fill="none"
         />
@@ -134,7 +146,7 @@ function RectangularProgressBar({
           width={width - border}
           height={height - border}
           rx={32}
-          stroke="url(#grad)"
+          stroke="#fff"
           strokeWidth={border}
           fill="none"
           strokeDasharray={perimeter}
@@ -158,20 +170,510 @@ function RectangularProgressBar({
   );
 }
 
+// Header Component
+type HeaderProps = { userFirstLetter: string };
+const Header: React.FC<HeaderProps> = memo(function Header({
+  userFirstLetter,
+}) {
+  return (
+    <View style={styles.headerRow}>
+      <Image
+        source={require("../../assets/images/logo_tunenova_3-removebg-preview.png")}
+        style={{ height: 40, width: 120 }}
+        contentFit="contain"
+        contentPosition="center"
+      />
+      <Text
+        style={{
+          fontFamily: "Nunito-Medium",
+          color: "#fff",
+          fontSize: RFValue(20),
+        }}
+      >
+        {`Hello, ${userFirstLetter}!`}
+      </Text>
+    </View>
+  );
+});
+
+// MetaInfo Component
+type MetaInfoProps = { campaign: any; slideDirection: "left" | "right" };
+const MetaInfo: React.FC<MetaInfoProps> = memo(function MetaInfo({
+  campaign,
+  slideDirection,
+}) {
+  return (
+    <View style={styles.innerMetaContainer}>
+      <Animated.Text
+        entering={slideDirection === "right" ? SlideInRight : SlideInLeft}
+        exiting={slideDirection === "right" ? SlideOutLeft : SlideOutRight}
+        style={[styles.title, { marginBottom: 4 }]}
+        numberOfLines={1}
+        key={campaign.songTitle}
+      >
+        {campaign.songTitle}
+      </Animated.Text>
+      {campaign.isPaid && (
+        <Animated.Text
+          entering={slideDirection === "right" ? SlideInRight : SlideInLeft}
+          exiting={slideDirection === "right" ? SlideOutLeft : SlideOutRight}
+          style={[styles.sponsored, { marginBottom: 0 }]}
+          key={campaign.songTitle + "-sponsored"}
+        >
+          Sponsored
+        </Animated.Text>
+      )}
+    </View>
+  );
+});
+
+// PlayerProgress Component
+type PlayerProgressProps = {
+  player: any;
+  thumpAnimationStyle: any;
+  isPaused: boolean;
+  onPlayPause: () => void;
+  campaign: any;
+  slideDirection: "left" | "right";
+  setShowModal: (v: boolean) => void;
+  discoverMutate: (data: { id: string }) => void;
+  setIsPaused: (v: boolean) => void;
+  handleNext: () => void;
+};
+const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
+  function PlayerProgress({
+    player,
+    thumpAnimationStyle,
+    isPaused,
+    onPlayPause,
+    campaign,
+    slideDirection,
+    setShowModal,
+    discoverMutate,
+    setIsPaused,
+    handleNext,
+  }) {
+    const status = useAudioPlayerStatus(player);
+    const progress = useDerivedValue(() => {
+      if (status?.duration && status.duration > 0) {
+        return (status.currentTime ?? 0) / status.duration;
+      }
+      return 0;
+    }, [status]);
+
+    useEffect(() => {
+      let hasFinished = false;
+
+      if (status?.currentTime && status.currentTime > 20) {
+        hasFinished = true;
+      } else if (status?.didJustFinish) {
+        hasFinished = true;
+      }
+
+      if (hasFinished) {
+        player.pause();
+
+        if (campaign?.isPaid) {
+          setShowModal(true);
+          return;
+        }
+
+        handleNext();
+      }
+    }, [status?.currentTime, status?.didJustFinish]);
+
+    const handleDiscover = async () => {
+      const currentTime = status?.currentTime ?? 0;
+      const duration = status?.duration ?? 0;
+      const requiredTime = Math.min(10, duration / 2);
+
+      if (currentTime < requiredTime) {
+        ToastAndroid.show(
+          `Listen for at least ${Math.ceil(
+            requiredTime
+          )}s to discover this song!`,
+          ToastAndroid.SHORT
+        );
+        return;
+      }
+
+      // Mutate and open link
+      discoverMutate({ id: campaign.id });
+
+      player.pause();
+      setIsPaused(true);
+
+      if (campaign.isPaid) {
+        setShowModal(true);
+        return;
+      }
+      try {
+        await WebBrowser.openBrowserAsync(campaign.songLink!);
+      } catch (error) {
+        try {
+          await (async () => {
+            await Linking.openURL(campaign.songLink!);
+          })();
+        } catch (err) {
+          ToastAndroid.show(
+            "No browser found to open the link",
+            ToastAndroid.SHORT
+          );
+          console.error("Error opening song link with fallback:", err);
+        }
+      }
+    };
+
+    return (
+      <>
+        <RectangularProgressBar
+          progress={progress}
+          width={width - 48}
+          height={height * 0.5}
+          border={5}
+        >
+          <Pressable
+            style={styles.pressableHero}
+            onPress={onPlayPause}
+          >
+            <Animated.Image
+              source={
+                campaign.artworkUrl
+                  ? { uri: campaign.artworkUrl }
+                  : require("../../assets/images/Asset 2@4x-8.png")
+              }
+              style={[
+                styles.hero,
+                thumpAnimationStyle,
+                isPaused && { opacity: 0.5 },
+              ]}
+              resizeMode="contain"
+            />
+            {isPaused && (
+              <View
+                style={styles.heroOverlay}
+                pointerEvents="none"
+              >
+                <Text style={styles.heroOverlayText}>Paused</Text>
+              </View>
+            )}
+          </Pressable>
+          <MetaInfo
+            campaign={campaign}
+            slideDirection={slideDirection}
+          />
+        </RectangularProgressBar>
+        <Controls handleDiscover={handleDiscover} />
+      </>
+    );
+  }
+);
+
+// PlayerArea Component
+type PlayerAreaProps = {
+  player: any;
+  campaign: any;
+  thumpAnimationStyle: any;
+  isPaused: boolean;
+  onPlayPause: () => void;
+  slideDirection: "left" | "right";
+  handleNext: () => void;
+  handlePrevious: () => void;
+  currentIdx: number;
+  width: number;
+  setShowModal: (v: boolean) => void;
+  setIsPaused: (v: boolean) => void;
+  discoverMutate: (data: { id: string }) => void;
+};
+const PlayerArea: React.FC<PlayerAreaProps> = memo(function PlayerArea({
+  player,
+  campaign,
+  thumpAnimationStyle,
+  isPaused,
+  onPlayPause,
+  slideDirection,
+  handleNext,
+  handlePrevious,
+  currentIdx,
+  width,
+  setShowModal,
+  discoverMutate,
+  setIsPaused,
+}) {
+  // Open songLink in browser
+
+  return (
+    <>
+      <GestureDetector
+        gesture={Gesture.Tap()
+          .numberOfTaps(2)
+          .onEnd((event) => {
+            const x = event.x;
+            if (x < width / 2) {
+              if (currentIdx > 0) {
+                runOnJS(handlePrevious)();
+              } else {
+                // Optionally: shake or toast
+              }
+            } else {
+              runOnJS(handleNext)();
+            }
+          })}
+      >
+        <PlayerProgress
+          player={player}
+          thumpAnimationStyle={thumpAnimationStyle}
+          isPaused={isPaused}
+          onPlayPause={onPlayPause}
+          campaign={campaign}
+          slideDirection={slideDirection}
+          setShowModal={setShowModal}
+          discoverMutate={discoverMutate}
+          setIsPaused={setIsPaused}
+          handleNext={handleNext}
+        />
+      </GestureDetector>
+    </>
+  );
+});
+
+// Controls Component
+type ControlsProps = { handleDiscover: () => void };
+const Controls: React.FC<ControlsProps> = memo(function Controls({
+  handleDiscover,
+}) {
+  return (
+    <View style={styles.postLikeRow}>
+      <TouchableOpacity
+        style={styles.discoverBtn}
+        onPress={handleDiscover}
+      >
+        <Text style={styles.discoverBtnText}>Tap to Discover</Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+// LikeModal Component
+type LikeModalProps = {
+  showModal: boolean;
+  handleLike: () => void;
+  handleDislike: () => void;
+  setShowModal: (v: boolean) => void;
+};
+const LikeModal: React.FC<LikeModalProps> = memo(function LikeModal({
+  showModal,
+  handleLike,
+  handleDislike,
+  setShowModal,
+}) {
+  return (
+    <Modal
+      visible={showModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Image
+            source={require("../../assets/images/Asset 2@4x-8.png")}
+            style={{ width: 25, height: 25, marginBottom: 10 }}
+            contentFit="contain"
+            contentPosition="center"
+          />
+          <Text style={styles.modalTitle}>Do you like this song?</Text>
+          <View style={{ marginTop: 24, width: "100%", gap: 10 }}>
+            <Pressable
+              style={[styles.modalBtn, { backgroundColor: "#ff003c" }]}
+              onPress={handleLike}
+            >
+              <Text style={styles.modalBtnText}>Yes</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.modalBtn, { backgroundColor: "#E6E6E6" }]}
+              onPress={handleDislike}
+            >
+              <Text style={[styles.modalBtnText, { color: "#000" }]}>No</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
+// TipsModal Component
+type TipsModalProps = {
+  showTipsModal: boolean;
+  tips: string[];
+  currentTipIdx: number;
+  setCurrentTipIdx: React.Dispatch<React.SetStateAction<number>>;
+  setShowTipsModal: (v: boolean) => void;
+  setIsPaused: (v: boolean) => void;
+  player: any;
+};
+const TipsModal: React.FC<TipsModalProps> = memo(function TipsModal({
+  showTipsModal,
+  tips,
+  currentTipIdx,
+  setCurrentTipIdx,
+  setShowTipsModal,
+  setIsPaused,
+  player,
+}) {
+  return (
+    <Modal
+      visible={showTipsModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => {}}
+    >
+      <View style={styles.tipsModalOverlay}>
+        <View style={styles.tipsModalContent}>
+          <Text style={styles.tipsModalTitle}>Nova Tips</Text>
+          <Text style={styles.tipsModalText}>{tips[currentTipIdx]}</Text>
+          <TouchableOpacity
+            style={styles.tipsModalBtn}
+            onPress={async () => {
+              if (currentTipIdx < tips.length - 1) {
+                setCurrentTipIdx((idx) => idx + 1);
+              } else {
+                setShowTipsModal(false);
+                await AsyncStorage.setItem("hasSeenTips", "true");
+                setIsPaused(false);
+                player.play();
+              }
+            }}
+          >
+            <Text style={styles.tipsModalBtnText}>
+              {currentTipIdx < tips.length - 1 ? "Proceed" : "Finish"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
+// Loader Component
+type LoaderProps = {
+  refreshing: boolean;
+  onRefresh: () => void;
+  thumpAnimationStyle: any;
+};
+const Loader: React.FC<LoaderProps> = memo(function Loader({
+  refreshing,
+  onRefresh,
+  thumpAnimationStyle,
+}) {
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, justifyContent: "space-between" }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        }
+      >
+        <Skeleton style={{ height: 300, margin: 24, borderRadius: 16 }} />
+        <Skeleton
+          style={{ height: 40, marginHorizontal: 24, marginBottom: 16 }}
+        />
+        <Skeleton
+          style={{ height: 40, marginHorizontal: 24, marginBottom: 16 }}
+        />
+        <Skeleton
+          style={{
+            height: 60,
+            marginHorizontal: 24,
+            borderRadius: 8,
+            marginBottom: 40,
+          }}
+        />
+      </ScrollView>
+    </SafeAreaView>
+  );
+});
+
+// ErrorState Component
+type ErrorStateProps = {
+  refreshing: boolean;
+  onRefresh: () => void;
+  userFirstLetter: string;
+  thumpAnimationStyle: any;
+};
+const ErrorState: React.FC<ErrorStateProps> = memo(function ErrorState({
+  refreshing,
+  onRefresh,
+  userFirstLetter,
+  thumpAnimationStyle,
+}) {
+  const progress = useDerivedValue(() => 0);
+
+  return (
+    <SafeAreaView style={[styles.container]}>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "space-between",
+          paddingBottom: 20,
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        }
+      >
+        <Header userFirstLetter={userFirstLetter} />
+        <RectangularProgressBar
+          progress={progress}
+          width={width - 48}
+          height={height * 0.5}
+          border={4}
+        >
+          <Image
+            source={require("../../assets/images/Asset 2@4x-8.png")}
+            style={[
+              {
+                height: "35%",
+                width: "35%",
+                marginHorizontal: "auto",
+                marginBottom: 30,
+              },
+              thumpAnimationStyle,
+            ]}
+            contentFit="contain"
+            contentPosition="center"
+          />
+          <View style={styles.innerMetaContainer}>
+            <Text style={[styles.title]}>No campaign available</Text>
+          </View>
+        </RectangularProgressBar>
+        <View style={styles.metaWrapper}>
+          <View style={styles.postLikeRow} />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+});
+
 export default function ExplorePlayerScreen() {
   const [page, setPage] = useState(1);
   const { data, isLoading, isError, refetch, isFetching } = useExploreCampaigns(
     { page }
   );
-  const campaigns = data?.data?.campaigns || [];
+  const pathname = usePathname();
+
+  const campaigns = useMemo(() => data?.data?.campaigns || [], [data]);
   const pagination = data?.data?.pagination;
   const [currentIdx, setCurrentIdx] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const colorProgress = useSharedValue(0);
   const [refreshing, setRefreshing] = useState(false);
-  const [showRefreshHint, setShowRefreshHint] = useState(false);
-  const [hasRefreshed, setHasRefreshed] = useState(false);
-  const hintBounce = useSharedValue(0);
   const thump = useSharedValue(1);
   const [isPaused, setIsPaused] = useState(false);
   const [showTipsModal, setShowTipsModal] = useState(false);
@@ -180,68 +682,16 @@ export default function ExplorePlayerScreen() {
     "Earn cash instantly when you listen to songs with the 'sponsored' tag.",
     "Earn more cash when you invite friends",
     "Tap the logo to pause or play the music.",
+    "Double-tap the right hand side of the logo to skip to the next song.",
+    "Double-tap the left hand side of the logo to go back to the previous song.",
   ];
-  const translateX = useSharedValue(0);
+  const [slideDirection, setSlideDirection] = useState<"left" | "right">(
+    "right"
+  );
 
-  // Fetch user profile for greeting
   const { data: profileData } = useProfile();
   const userFirstLetter =
     profileData?.data?.name?.trim()?.charAt(0)?.toUpperCase() || "C";
-
-  const animatedCardStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
-
-  // Check if user has ever refreshed
-  useEffect(() => {
-    (async () => {
-      const refreshed = await AsyncStorage.getItem("hasRefreshedHome");
-      if (!refreshed) {
-        // Show hint occasionally
-        setTimeout(() => setShowRefreshHint(true), 1200);
-      } else {
-        setHasRefreshed(true);
-      }
-    })();
-  }, []);
-
-  // Animate the hint when shown
-  useEffect(() => {
-    if (showRefreshHint) {
-      hintBounce.value = withRepeat(
-        withSequence(
-          withTiming(-10, { duration: 300 }),
-          withTiming(0, { duration: 300 })
-        ),
-        3,
-        false
-      );
-      // Auto-hide after 3.5s
-      const t = setTimeout(() => setShowRefreshHint(false), 3500);
-      return () => clearTimeout(t);
-    }
-  }, [showRefreshHint]);
-
-  // Occasionally re-show the hint if user hasn't refreshed
-  useEffect(() => {
-    if (!hasRefreshed) {
-      const interval = setInterval(() => {
-        setShowRefreshHint(true);
-      }, 20000); // every 20s
-      return () => clearInterval(interval);
-    }
-  }, [hasRefreshed]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-    if (!hasRefreshed) {
-      setHasRefreshed(true);
-      setShowRefreshHint(false);
-      await AsyncStorage.setItem("hasRefreshedHome", "true");
-    }
-  };
 
   // Start animations
   useEffect(() => {
@@ -279,40 +729,41 @@ export default function ExplorePlayerScreen() {
     transform: [{ scale: thump.value }],
   }));
 
-  const rScreenGlowStyle = useAnimatedStyle(() => {
-    const shadowColor = interpolateColor(
-      colorProgress.value,
-      [0, 0.2, 0.4, 0.6, 0.8, 1],
-      [
-        "#E10032", // Brand
-        "#ff00ff", // Magenta
-        "#00ffff", // Cyan
-        "#ffff00", // Yellow
-        "#00ff00", // Lime
-        "#E10032", // Back to Brand
-      ]
-    );
-
-    return {
-      shadowColor,
-    };
-  });
-
   const { mutate: listenMutate } = useListenToCampaign();
   const { mutate: likeMutate } = useLikeCampaign();
   const { mutate: discoverMutate } = useDiscoverCampaign();
 
-  const campaign = campaigns[currentIdx];
+  const campaign = useMemo(
+    () => campaigns[currentIdx],
+    [campaigns, currentIdx]
+  );
   const player = useAudioPlayer(
     campaign?.audioFileUrl ? { uri: campaign.audioFileUrl } : undefined
   );
-  const status = useAudioPlayerStatus(player);
-  const progress = useDerivedValue(() => {
-    if (status?.duration && status.duration > 0) {
-      return (status.currentTime ?? 0) / status.duration;
+
+  const isRefreshingRef = useRef(false);
+
+  useEffect(() => {
+    if (pathname !== "/home") {
+      player.pause();
+      setIsPaused(true);
     }
-    return 0;
-  });
+  }, [pathname]);
+
+  const onRefresh = useCallback(async () => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    setRefreshing(true);
+    try {
+      if (player && player.isLoaded) {
+        player.pause();
+      }
+      await refetch();
+    } finally {
+      setRefreshing(false);
+      isRefreshingRef.current = false;
+    }
+  }, [player, refetch]);
 
   // Play the current campaign's audio and animate progress bar to match duration (fix glitch)
   useEffect(() => {
@@ -325,247 +776,98 @@ export default function ExplorePlayerScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign?.audioFileUrl]);
 
-  // Listen for playback end
-  useEffect(() => {
-    if (status?.didJustFinish) {
-      setShowModal(true);
-    }
-  }, [status?.didJustFinish]);
+  console.log("current Idx", currentIdx);
 
   // Move to next campaign or next page
-  const handleNext = useCallback(async () => {
+  const handleNext = async () => {
+    setSlideDirection("right");
     setShowModal(false);
     if (currentIdx < campaigns.length - 1) {
       setCurrentIdx((idx) => idx + 1);
-    } else if (pagination && pagination.page < pagination.totalPages) {
-      // Fetch next page and reset index
-      setPage((p) => p + 1);
-      setCurrentIdx(0);
-      await refetch();
-    } else {
-      // Optionally: show a message or loop
-      // setCurrentIdx(0); // Remove this to avoid looping
-    }
-  }, [currentIdx, campaigns.length, pagination, refetch]);
-
-  const gesture = Gesture.Pan()
-    .onUpdate((event) => {
-      translateX.value = event.translationX;
-    })
-    .onEnd((event) => {
-      if (Math.abs(event.translationX) > 100) {
-        translateX.value = withTiming(
-          Math.sign(event.translationX) * width,
-          { duration: 300 },
-          () => {
-            "worklet";
-            runOnJS(handleNext)();
-            translateX.value = 0;
-          }
-        );
+    } else if (pagination) {
+      const nextPage = pagination.page + 1;
+      if (nextPage > pagination.totalPages) {
+        setPage(1);
+        setCurrentIdx(0);
+        player.pause();
+        await refetch();
       } else {
-        translateX.value = withTiming(0, { duration: 300 });
+        setPage(nextPage);
+        setCurrentIdx(0);
+        player.pause();
+        await refetch();
       }
-    });
+    }
+  };
+
+  // Move to previous campaign
+  const handlePrevious = () => {
+    setSlideDirection("left");
+    setShowModal(false);
+    if (currentIdx > 0) {
+      setCurrentIdx((idx) => idx - 1);
+    }
+  };
 
   // No longer move to next on dislike
-  const handleDislike = useCallback(() => {
-    setShowModal(false);
+  const handleDislike = () => {
     handleNext();
-  }, [player]);
-
-  // Open songLink in browser
-  const handleDiscover = useCallback(() => {
-    // For paid campaigns, check listen duration
-    if (campaign.isPaid) {
-      const currentTime = status?.currentTime ?? 0;
-      const duration = status?.duration ?? 0;
-      const requiredTime = Math.min(10, duration / 2);
-
-      if (currentTime < requiredTime) {
-        ToastAndroid.show(
-          `Listen for at least ${Math.ceil(
-            requiredTime
-          )}s to discover this song!`,
-          ToastAndroid.SHORT
-        );
-        return;
-      }
-    }
-
-    // Pause playback before opening link/modal
-    player.pause();
-    // Mutate and open link
-    discoverMutate({ id: campaign.id });
-    setShowModal(true);
-  }, [campaign, status, discoverMutate]);
+  };
 
   // Like the campaign (no longer moves to next)
-  const handleLike = useCallback(() => {
+  const handleLike = async () => {
     likeMutate({ id: campaign.id });
-    // Pause playback before opening link
-    player.pause();
     // Show skip/discover buttons
     if (campaign?.songLink) {
-      Linking.openURL(campaign.songLink);
+      await WebBrowser.openBrowserAsync(campaign.songLink);
     }
-    setShowModal(false);
     handleNext();
-  }, [campaign, likeMutate]);
-
-  // Pause/resume player when like modal is shown/hidden
-  useEffect(() => {
-    if (showModal) {
-      player.pause();
-    } else {
-      if (status?.didJustFinish) {
-        handleNext();
-      } else if (!isPaused) {
-        player.play();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showModal]);
+  };
 
   // Show tips modal for first-time users
   useEffect(() => {
     (async () => {
       const seen = await AsyncStorage.getItem("hasSeenTips");
       if (!seen) {
-        setShowTipsModal(true);
+        setIsPaused(true);
+        setTimeout(() => {
+          try {
+            player.pause();
+          } catch (e) {
+            console.warn("Failed to pause player:", e);
+          }
+
+          setShowTipsModal(true);
+        }, 1500);
       }
     })();
-  }, []);
-
-  // Block playback if tips modal is open
-  useEffect(() => {
-    if (showTipsModal) {
-      player.pause();
-    } else if (!isPaused && !showModal) {
-      player.play();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showTipsModal]);
-
-  // Also block playback on campaign change if tips modal is open
-  useEffect(() => {
-    if (showTipsModal) player.pause();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaign]);
+    // Only run this when player is ready
+  }, [player]);
 
   // Skeleton loader
   if (isLoading || isFetching) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ScrollView
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: "space-between",
-          }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-            />
-          }
-        >
-          <Skeleton style={{ height: 300, margin: 24, borderRadius: 16 }} />
-          <Skeleton
-            style={{ height: 40, marginHorizontal: 24, marginBottom: 16 }}
-          />
-          <Skeleton
-            style={{ height: 40, marginHorizontal: 24, marginBottom: 16 }}
-          />
-          <Skeleton
-            style={{
-              height: 60,
-              marginHorizontal: 24,
-              borderRadius: 8,
-              marginBottom: 40,
-            }}
-          />
-        </ScrollView>
-      </SafeAreaView>
+      <Loader
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        thumpAnimationStyle={thumpAnimationStyle}
+      />
     );
   }
 
   if (isError || !campaign) {
     return (
-      <AnimatedSafeAreaView style={[styles.container]}>
-        <ScrollView
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: "space-between",
-            paddingBottom: 20,
-          }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-            />
-          }
-        >
-          {/* Header -------------------------------------------------------- */}
-          <View style={styles.headerRow}>
-            <Image
-              source={require("../../assets/images/logo_tunenova_3-removebg-preview.png")}
-              style={{ height: 40, width: 120 }}
-              contentFit="contain"
-              contentPosition="center"
-            />
-
-            <Text
-              style={{
-                fontFamily: "Nunito-Medium",
-                color: "#fff",
-                fontSize: RFValue(20),
-              }}
-            >
-              {`Hi, ${userFirstLetter}!`}
-            </Text>
-          </View>
-
-          {/* Album art with square progress bar */}
-          <RectangularProgressBar
-            progress={progress}
-            width={width - 48}
-            height={height * 0.5}
-            border={4}
-          >
-            <Image
-              source={require("../../assets/images/Asset 2@4x-8.png")}
-              style={[
-                {
-                  height: "35%",
-                  width: "35%",
-                  marginHorizontal: "auto",
-                  marginBottom: 30,
-                },
-                thumpAnimationStyle,
-              ]}
-              contentFit="contain"
-              contentPosition="center"
-            />
-            <View style={styles.innerMetaContainer}>
-              <Text style={[styles.title]}>No campaign available</Text>
-            </View>
-          </RectangularProgressBar>
-
-          {/* Track meta ---------------------------------------- */}
-          <View style={styles.metaWrapper}>
-            <View style={styles.postLikeRow} />
-          </View>
-        </ScrollView>
-      </AnimatedSafeAreaView>
+      <ErrorState
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        userFirstLetter={userFirstLetter}
+        thumpAnimationStyle={thumpAnimationStyle}
+      />
     );
   }
 
   return (
-    <AnimatedSafeAreaView
-      style={[styles.container, styles.screenGlow, rScreenGlowStyle]}
-    >
-      {/* Pull to refresh hint - absolutely positioned at the top */}
-
+    <SafeAreaView style={[styles.container]}>
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
@@ -579,166 +881,47 @@ export default function ExplorePlayerScreen() {
           />
         }
       >
-        {/* Header -------------------------------------------------------- */}
-        <View style={styles.headerRow}>
-          <Image
-            source={require("../../assets/images/logo_tunenova_3-removebg-preview.png")}
-            style={{ height: 40, width: 120 }}
-            contentFit="contain"
-            contentPosition="center"
-          />
-
-          <Text
-            style={{
-              fontFamily: "Nunito-Medium",
-              color: "#fff",
-              fontSize: RFValue(20),
-            }}
-          >
-            {`Hi, ${userFirstLetter}!`}
-          </Text>
-        </View>
-
-        {/* Album art with square progress bar */}
-        <GestureDetector gesture={gesture}>
-          <Animated.View style={animatedCardStyle}>
-            <RectangularProgressBar
-              progress={progress}
-              width={width - 48}
-              height={height * 0.5}
-              border={5}
-            >
-              <Pressable
-                style={styles.pressableHero}
-                onPress={() => {
-                  if (isPaused) {
-                    setIsPaused(false);
-                    player.play();
-                  } else {
-                    setIsPaused(true);
-                    player.pause();
-                  }
-                }}
-              >
-                <Animated.Image
-                  source={
-                    campaign.artworkUrl
-                      ? { uri: campaign.artworkUrl }
-                      : require("../../assets/images/Asset 2@4x-8.png")
-                  }
-                  style={[
-                    styles.hero,
-                    thumpAnimationStyle,
-                    isPaused && { opacity: 0.5 },
-                  ]}
-                  resizeMode="contain"
-                />
-                {isPaused && (
-                  <View
-                    style={styles.heroOverlay}
-                    pointerEvents="none"
-                  >
-                    <Text style={styles.heroOverlayText}>Paused</Text>
-                  </View>
-                )}
-              </Pressable>
-              <View style={styles.innerMetaContainer}>
-                <Text
-                  style={[styles.title, { marginBottom: 4 }]}
-                  numberOfLines={1}
-                >
-                  {campaign.songTitle}
-                </Text>
-                {!campaign.isPaid && (
-                  <Text style={[styles.sponsored, { marginBottom: 0 }]}>
-                    Sponsored
-                  </Text>
-                )}
-              </View>
-            </RectangularProgressBar>
-          </Animated.View>
-        </GestureDetector>
-
-        <View style={styles.postLikeRow}>
-          <TouchableOpacity
-            style={styles.discoverBtn}
-            onPress={handleDiscover}
-          >
-            <Text style={styles.discoverBtnText}>Tap to Discover</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Like Modal */}
-        <Modal
-          visible={showModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Image
-                source={require("../../assets/images/Asset 2@4x-8.png")}
-                style={{
-                  width: 25,
-                  height: 25,
-                  marginBottom: 10,
-                }}
-                contentFit="contain"
-                contentPosition="center"
-              />
-              <Text style={styles.modalTitle}>Do you like this song?</Text>
-              <View style={{ marginTop: 24, width: "100%", gap: 10 }}>
-                <Pressable
-                  style={[styles.modalBtn, { backgroundColor: "#ff003c" }]}
-                  onPress={handleLike}
-                >
-                  <Text style={styles.modalBtnText}>Yes</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.modalBtn, { backgroundColor: "#E6E6E6" }]}
-                  onPress={handleDislike}
-                >
-                  <Text style={[styles.modalBtnText, { color: "#000" }]}>
-                    No
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Tips Modal for first-time registration */}
-        <Modal
-          visible={showTipsModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {}}
-        >
-          <View style={styles.tipsModalOverlay}>
-            <View style={styles.tipsModalContent}>
-              <Text style={styles.tipsModalTitle}>Nova Tips</Text>
-              <Text style={styles.tipsModalText}>{tips[currentTipIdx]}</Text>
-              <TouchableOpacity
-                style={styles.tipsModalBtn}
-                onPress={async () => {
-                  if (currentTipIdx < tips.length - 1) {
-                    setCurrentTipIdx((idx) => idx + 1);
-                  } else {
-                    setShowTipsModal(false);
-                    await AsyncStorage.setItem("hasSeenTips", "true");
-                  }
-                }}
-              >
-                <Text style={styles.tipsModalBtnText}>
-                  {currentTipIdx < tips.length - 1 ? "Proceed" : "Finish"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+        <Header userFirstLetter={userFirstLetter} />
+        <PlayerArea
+          player={player}
+          campaign={campaign}
+          thumpAnimationStyle={thumpAnimationStyle}
+          isPaused={isPaused}
+          onPlayPause={() => {
+            if (isPaused) {
+              setIsPaused(false);
+              player.play();
+            } else {
+              setIsPaused(true);
+              player.pause();
+            }
+          }}
+          slideDirection={slideDirection}
+          handleNext={handleNext}
+          handlePrevious={handlePrevious}
+          currentIdx={currentIdx}
+          width={width}
+          setShowModal={setShowModal}
+          discoverMutate={discoverMutate}
+          setIsPaused={setIsPaused}
+        />
+        <LikeModal
+          showModal={showModal}
+          handleLike={handleLike}
+          handleDislike={handleDislike}
+          setShowModal={setShowModal}
+        />
+        <TipsModal
+          showTipsModal={showTipsModal}
+          tips={tips}
+          currentTipIdx={currentTipIdx}
+          setCurrentTipIdx={setCurrentTipIdx}
+          setShowTipsModal={setShowTipsModal}
+          setIsPaused={setIsPaused}
+          player={player}
+        />
       </ScrollView>
-    </AnimatedSafeAreaView>
+    </SafeAreaView>
   );
 }
 

@@ -11,15 +11,14 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
+import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMyCampaigns } from "../../api/campaign/campaign";
-import { RFValue } from "react-native-responsive-fontsize";
 
 export default function CampaignsScreen() {
   const { data, isLoading, error } = useMyCampaigns();
   const campaigns = data?.data || [];
   const hasData = campaigns.length > 0;
-  console.log(data);
 
   /* --------------------------------------------------------------- */
   /*  Header                                                         */
@@ -63,7 +62,7 @@ export default function CampaignsScreen() {
       style={styles.promoteBtn}
       onPress={() => router.push("/promote")}
     >
-      <Text style={styles.promoteTxt}>Promote your Song</Text>
+      <Text style={styles.promoteTxt}>Promote your song</Text>
     </TouchableOpacity>
   );
 
@@ -91,12 +90,21 @@ export default function CampaignsScreen() {
           });
         }}
       >
-        <Animated.View
-          entering={FadeIn.delay(index * 60)}
-          style={styles.card}
-        >
+        <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardNo}>#{item.id}</Text>
+            <Text style={styles.cardNo}>
+              #{item.id}{" "}
+              <Text
+                style={{
+                  color: "#ff003c",
+                  fontFamily: "Nunito-Medium",
+                }}
+              >
+                {item.isPaid &&
+                  item.paymentStatus === "pending" &&
+                  "(Finish setup)"}
+              </Text>
+            </Text>
             <Feather
               name="chevron-right"
               size={22}
@@ -104,7 +112,25 @@ export default function CampaignsScreen() {
             />
           </View>
 
-          <Text style={styles.cardTitle}>{item.songTitle}</Text>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Text style={styles.cardTitle}>{item.songTitle}</Text>
+            <Text
+              style={{
+                textTransform: "capitalize",
+                color: "#fff",
+                fontFamily: "Nunito-Light",
+                fontSize: RFValue(12),
+              }}
+            >
+              {item.targetAudience[0]}
+            </Text>
+          </View>
 
           <Text style={styles.budget}>
             Budget:&nbsp;
@@ -116,9 +142,13 @@ export default function CampaignsScreen() {
           </Text>
 
           {/* progress */}
-          <View style={styles.progressTrack}>
-            <Animated.View style={[styles.progressFill]} />
-          </View>
+          {budget === 0 || budget === null ? null : (
+            <View style={styles.progressTrack}>
+              <Animated.View
+                style={[styles.progressFill, { width: `${progress * 100}%` }]}
+              />
+            </View>
+          )}
 
           <View style={styles.progressMeta}>
             <Text style={styles.metaLeft}>{listens} Listeners</Text>
@@ -128,7 +158,7 @@ export default function CampaignsScreen() {
               </Text>
             ) : null}
           </View>
-        </Animated.View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -167,7 +197,7 @@ export default function CampaignsScreen() {
           data={campaigns}
           keyExtractor={(c) => c.id}
           renderItem={Card}
-          contentContainerStyle={{ paddingBottom: 140 }}
+          contentContainerStyle={{ paddingBottom: 50 }}
           ItemSeparatorComponent={() => <View style={{ height: 22 }} />}
         />
       ) : (
@@ -220,6 +250,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#3f3f46",
     overflow: "hidden",
+    marginBottom: 8,
   },
   progressFill: {
     height: "100%",
@@ -228,7 +259,6 @@ const styles = StyleSheet.create({
   progressMeta: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 8,
   },
   metaLeft: {
     color: "#a1a1aa",
@@ -271,8 +301,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 18,
     alignItems: "center",
-    marginTop: 28,
-    marginBottom: 50,
+    marginTop: 15,
+    marginBottom: 30,
   },
   promoteTxt: { color: "#fff", fontSize: 18, fontFamily: "Nunito-Bold" },
 });

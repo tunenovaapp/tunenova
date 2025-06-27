@@ -30,6 +30,12 @@ export interface CreateCampaignBody {
 
 /* ─────────── Response-side types ─────────── */
 
+export interface VirtualAccountInfo {
+  accountName: string;
+  accountNumber: string;
+  bankName: string;
+}
+
 export interface CampaignSummary {
   id: string;
   songTitle: string;
@@ -50,7 +56,7 @@ export interface CreateCampaignResponse {
   message: string;
   data: {
     campaign: CampaignSummary;
-    paystack: PaystackInfo | null;
+    virtualAccount: VirtualAccountInfo | null; // for paid campaigns
   };
 }
 
@@ -200,7 +206,11 @@ export interface CampaignAnalytics {
 }
 
 export interface CampaignDetail extends Campaign {
+  paymentStatus: string;
   analytics: CampaignAnalytics;
+  virtualAccountName: string;
+  virtualAccountNumber: string;
+  virtualAccountBank: string;
 }
 
 export interface CampaignResponse {
@@ -287,6 +297,7 @@ export function useExploreCampaigns(
   return useQuery<ExploreResponse, AxiosError<ApiError>>({
     queryKey: ["explore", page, limit],
     queryFn: () => fetchExplore({ page, limit }),
+    enabled: page > 0 && limit > 0,
     ...{
       keepPreviousData: true, // good UX when paging
       ...options,
@@ -421,12 +432,24 @@ export function useDiscoverCampaign(
       ...options,
       onSuccess: (data, variables, context) => {
         /* ❗ Optional cache tweaks:
-           1.  Invalidate the "explore" lists so the just-discovered campaign disappears.
            2.  If you cache single campaigns, you could patch them here as well. */
-        qc.invalidateQueries({ queryKey: ["explore"] });
-
         options?.onSuccess?.(data, variables, context);
       },
+    },
+  });
+}
+
+// Delete campaign mutation
+export function useDeleteCampaign() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string | number) => {
+      const res = await api.delete(`/campaigns/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
   });
 }

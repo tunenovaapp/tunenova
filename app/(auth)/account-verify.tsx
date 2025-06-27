@@ -186,19 +186,6 @@ export default function AccountVerificationScreen() {
     );
   };
 
-  // animated styles ---------------------------------------------------------
-  const rShake = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX: interpolate(
-          shake.value,
-          [0, 0.25, 0.5, 0.75, 1],
-          [0, -8, 8, -8, 0]
-        ),
-      },
-    ],
-  }));
-
   // -------------------------------------------------------------------------
   return (
     <KeyboardAvoidingView
@@ -207,7 +194,7 @@ export default function AccountVerificationScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <Animated.View style={[styles.inner, rShake]}>
+        <View style={[styles.inner]}>
           <Text style={styles.heading}>Verification code sent</Text>
           <Text style={styles.subHeading}>
             Please enter the 4‑digit code we sent to your email address
@@ -290,7 +277,7 @@ export default function AccountVerificationScreen() {
               {message}
             </Text>
           )}
-        </Animated.View>
+        </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );

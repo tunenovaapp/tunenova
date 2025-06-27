@@ -10,6 +10,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,6 +18,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -70,7 +72,6 @@ export default function SignupScreen() {
   const { mutate, isPending, isSuccess, isError, error } = useRegister();
 
   const progress = useSharedValue(0); // 0 → 0.25 (1st step of 4)
-  const shake = useSharedValue(0);
 
   // Kick off initial progress bar fill
   useEffect(() => {
@@ -81,21 +82,6 @@ export default function SignupScreen() {
   const rProgress = useAnimatedStyle(() => {
     return {
       width: interpolate(progress.value, [0, 1], [0, width]),
-    };
-  });
-
-  // Shake animation on form wrapper when submit fails
-  const rShake = useAnimatedStyle(() => {
-    return {
-      transform: [
-        {
-          translateX: interpolate(
-            shake.value,
-            [0, 0.25, 0.5, 0.75, 1],
-            [0, -10, 10, -10, 0]
-          ),
-        },
-      ],
     };
   });
 
@@ -125,12 +111,6 @@ export default function SignupScreen() {
     });
   };
 
-  // Handle invalid submit (trigger shake) -----------------------------------
-  const onInvalid = () => {
-    shake.value = 0;
-    shake.value = withTiming(1, { duration: 450 });
-  };
-
   // Password visibility toggles --------------------------------------------
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -152,12 +132,12 @@ export default function SignupScreen() {
           </View>
 
           {/* Scrollable form to avoid keyboard overlap */}
-          <Animated.ScrollView
+          <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
             keyboardShouldPersistTaps="handled"
           >
-            <Animated.View style={[styles.formWrapper, rShake]}>
+            <View style={[styles.formWrapper]}>
               <Text style={styles.heading}>Tell us about you</Text>
               <Text style={styles.subHeading}>Enter your details below</Text>
 
@@ -336,7 +316,7 @@ export default function SignupScreen() {
                 style={styles.button}
                 disabled={isPending}
                 activeOpacity={0.9}
-                onPress={handleSubmit(onValid, onInvalid)}
+                onPress={handleSubmit(onValid)}
               >
                 {isPending ? (
                   <ActivityIndicator color="#fff" />
@@ -355,8 +335,8 @@ export default function SignupScreen() {
                   {message}
                 </Text>
               )}
-            </Animated.View>
-          </Animated.ScrollView>
+            </View>
+          </ScrollView>
         </SafeAreaView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>

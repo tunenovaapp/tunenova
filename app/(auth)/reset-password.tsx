@@ -16,12 +16,6 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
 import * as yup from "yup";
 
 /**
@@ -65,18 +59,6 @@ export default function ResetPasswordScreen() {
   const { mutate, isPending, isSuccess, isError } = useResetPassword();
 
   // Shake animation ---------------------------------------------------
-  const shake = useSharedValue(0);
-  const rShake = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX: interpolate(
-          shake.value,
-          [0, 0.25, 0.5, 0.75, 1],
-          [0, -8, 8, -8, 0]
-        ),
-      },
-    ],
-  }));
 
   const onValid = async (data: FormData) => {
     setMessage(null);
@@ -100,10 +82,6 @@ export default function ResetPasswordScreen() {
       }
     );
   };
-  const onInvalid = () => {
-    shake.value = 0;
-    shake.value = withTiming(1, { duration: 450 });
-  };
 
   return (
     <KeyboardAvoidingView
@@ -112,7 +90,7 @@ export default function ResetPasswordScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <Animated.View style={[styles.wrapper, rShake]}>
+        <View style={[styles.wrapper]}>
           <Text style={styles.heading}>Reset Password</Text>
           <Text style={styles.subHeading}>Choose a new password</Text>
 
@@ -193,7 +171,7 @@ export default function ResetPasswordScreen() {
             style={[styles.button, isPending ? { opacity: 0.5 } : undefined]}
             disabled={isPending}
             activeOpacity={0.9}
-            onPress={handleSubmit(onValid, onInvalid)}
+            onPress={handleSubmit(onValid)}
           >
             {isPending ? (
               <ActivityIndicator color="#fff" />
@@ -212,7 +190,7 @@ export default function ResetPasswordScreen() {
               {message}
             </Text>
           )}
-        </Animated.View>
+        </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );

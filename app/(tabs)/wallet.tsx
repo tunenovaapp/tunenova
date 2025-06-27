@@ -37,8 +37,6 @@ import {
 import Modal from "react-native-modal";
 import Animated, {
   FadeInUp,
-  interpolate,
-  useAnimatedStyle,
   useSharedValue,
   withDelay,
   withTiming,
@@ -107,16 +105,6 @@ export default function WalletScreen({ navigation }: any) {
     cardAnim.value = withDelay(150, withTiming(1, { duration: 450 }));
   }, []);
 
-  const rCardStyle = useAnimatedStyle(() => {
-    return {
-      opacity: cardAnim.value,
-      transform: [
-        { translateY: interpolate(cardAnim.value, [0, 1], [-20, 0]) },
-        { scale: interpolate(cardAnim.value, [0, 1], [0.95, 1]) },
-      ],
-    };
-  });
-
   const {
     data: balanceData,
     isLoading: isBalanceLoading,
@@ -135,10 +123,6 @@ export default function WalletScreen({ navigation }: any) {
     }
     balanceSv.value = withDelay(300, withTiming(target, { duration: 800 }));
   }, [isBalanceLoading, isBalanceError, balanceData]);
-
-  const rBalanceText = useAnimatedStyle(() => ({
-    opacity: cardAnim.value,
-  }));
 
   // Fetch withdrawal transactions
   const { data, isLoading, isError, refetch } = useWithdrawalTransactions({
@@ -191,7 +175,7 @@ export default function WalletScreen({ navigation }: any) {
                 }}
               />
             ) : (
-              <Animated.View style={[styles.balanceCard, rCardStyle]}>
+              <View style={[styles.balanceCard]}>
                 <Image
                   source={require("../../assets/images/Frame 33540.png")}
                   style={{
@@ -203,9 +187,9 @@ export default function WalletScreen({ navigation }: any) {
                   }}
                 />
                 <Text style={styles.balanceLabel}>Total balance</Text>
-                <Animated.Text style={[styles.balance, rBalanceText]}>
-                  ₦{Number(balanceSv.value).toFixed(2)}
-                </Animated.Text>
+                <Text style={[styles.balance]}>
+                  ₦{Number(balanceData?.data.wallet.balance).toFixed(2)}
+                </Text>
                 <TouchableOpacity
                   activeOpacity={0.8}
                   style={styles.withdrawBtn}
@@ -213,7 +197,7 @@ export default function WalletScreen({ navigation }: any) {
                 >
                   <Text style={styles.withdrawText}>Withdraw</Text>
                 </TouchableOpacity>
-              </Animated.View>
+              </View>
             )}
 
             {/* Metrics strip */}

@@ -13,7 +13,6 @@ import {
   View,
 } from "react-native";
 import Animated, {
-  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -37,7 +36,6 @@ export default function OTPVerificationScreen() {
 
   // Reanimated values per cell
   const focusedIdx = useSharedValue<number>(-1);
-  const shake = useSharedValue(0);
 
   // Countdown timer ---------------------------------------------------
   useEffect(() => {
@@ -117,21 +115,6 @@ export default function OTPVerificationScreen() {
       };
     });
 
-  // Wrapper shake style on invalid ------------------------------------
-  const rShake = useAnimatedStyle(() => {
-    return {
-      transform: [
-        {
-          translateX: interpolate(
-            shake.value,
-            [0, 0.2, 0.4, 0.6, 0.8, 1],
-            [0, -8, 8, -8, 8, 0]
-          ),
-        },
-      ],
-    };
-  });
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -139,7 +122,7 @@ export default function OTPVerificationScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <Animated.View style={[styles.innerWrapper, rShake]}>
+        <Animated.View style={[styles.innerWrapper]}>
           {/* Faux progress – 2 / 4 filled */}
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: width * 0.5 }]} />

@@ -16,12 +16,6 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
 import { RFValue } from "react-native-responsive-fontsize";
 import * as yup from "yup";
 
@@ -56,19 +50,6 @@ export default function ForgotPasswordScreen() {
   const { mutate, isPending, isSuccess, isError } = useForgotPassword();
 
   // Shake animation when invalid --------------------------------------
-  const shake = useSharedValue(0);
-  const rShake = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX: interpolate(
-          shake.value,
-          [0, 0.25, 0.5, 0.75, 1],
-          [0, -8, 8, -8, 0]
-        ),
-      },
-    ],
-  }));
-
   const onValid = async (data: FormData) => {
     setMessage(null);
     mutate(
@@ -86,10 +67,6 @@ export default function ForgotPasswordScreen() {
       }
     );
   };
-  const onInvalid = () => {
-    shake.value = 0;
-    shake.value = withTiming(1, { duration: 450 });
-  };
 
   return (
     <KeyboardAvoidingView
@@ -98,7 +75,7 @@ export default function ForgotPasswordScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <Animated.View style={[styles.wrapper, rShake]}>
+        <View style={[styles.wrapper]}>
           <Text style={styles.heading}>Forgot Password</Text>
           <Text style={styles.subHeading}>
             Don&apos;t worry it happens. Please enter the email or phone number
@@ -135,7 +112,7 @@ export default function ForgotPasswordScreen() {
             style={[styles.button, isPending ? { opacity: 0.5 } : undefined]}
             disabled={isPending}
             activeOpacity={0.9}
-            onPress={handleSubmit(onValid, onInvalid)}
+            onPress={handleSubmit(onValid)}
           >
             {isPending ? (
               <ActivityIndicator color="#fff" />
@@ -163,7 +140,7 @@ export default function ForgotPasswordScreen() {
               <Text style={styles.backText}>go back</Text>
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
