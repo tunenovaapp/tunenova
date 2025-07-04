@@ -8,9 +8,6 @@ import {
   useWithdraw,
   useWithdrawalTransactions,
 } from "@/api/wallet/wallet";
-import * as Clipboard from "expo-clipboard";
-import { RFValue } from "react-native-responsive-fontsize";
-
 import {
   Entypo,
   FontAwesome5,
@@ -18,6 +15,7 @@ import {
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 import { yupResolver } from "@hookform/resolvers/yup";
+import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
 import React, { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -41,6 +39,7 @@ import Animated, {
   withDelay,
   withTiming,
 } from "react-native-reanimated";
+import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as yup from "yup";
 import CustomPicker from "../../components/CustomPicker";
@@ -290,12 +289,18 @@ export default function WalletScreen({ navigation }: any) {
               <Text
                 style={[
                   styles.txStatus,
-                  item.status === "SUCCESSFUL"
-                    ? { color: "#34d399" }
-                    : { color: "#fb923c" },
+                  item.status === "completed"
+                    ? { color: "#377D22" }
+                    : item.status === "pending"
+                    ? { color: "#F09B59" }
+                    : { color: "#EB3324" },
                 ]}
               >
-                {item.status}
+                {item.status === "completed"
+                  ? "Successful"
+                  : item.status === "pending"
+                  ? "Pending"
+                  : "Failed"}
               </Text>
             </Animated.View>
           )
@@ -369,8 +374,8 @@ const withdrawalSchema = yup.object().shape({
     .matches(/^[0-9.]+$/, "Please enter a valid amount")
     .test(
       "min-amount",
-      "Minimum withdrawal is ₦100",
-      (value) => !value || Number(value) >= 100
+      "Minimum withdrawal is ₦1",
+      (value) => !value || Number(value) >= 1
     ),
 });
 
@@ -391,8 +396,8 @@ const withdrawalAmountSchema = yup.object().shape({
     .matches(/^[0-9.]+$/, "Please enter a valid amount")
     .test(
       "min-amount",
-      "Minimum withdrawal is ₦100",
-      (value) => !value || Number(value) >= 100
+      "Minimum withdrawal is 1",
+      (value) => !value || Number(value) >= 1
     ),
 });
 

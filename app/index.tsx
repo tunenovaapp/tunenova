@@ -95,7 +95,7 @@ function useSlideAnimatedStyles(progress: any) {
 
 export default function OnboardingScreen() {
   const [index, setIndex] = useState(0);
-  const [checking, setChecking] = useState(false);
+  const [checking, setChecking] = useState(true);
   const progress = useSharedValue(0);
 
   // On mount, check onboarding and auth state
@@ -146,15 +146,10 @@ export default function OnboardingScreen() {
             resizeMode="contain"
             style={[
               styles.image,
-              i < 2
-                ? {
-                    width: width * 0.5,
-                    height: height * 0.5,
-                  }
-                : {
-                    width: width * 0.8,
-                    height: height * 0.8,
-                  },
+              {
+                width: width * 0.85,
+                height: height * 0.85,
+              },
               rImages[i],
             ]}
           />

@@ -19,6 +19,8 @@ import {
   View,
 } from "react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -95,12 +97,14 @@ export default function SignupScreen() {
       ...(data.referral ? { referralCode: data.referral } : {}),
     };
     mutate(payload, {
-      onSuccess: () => {
+      onSuccess: async () => {
         setMessage(
           "Registration successful! Please check your email to verify your account."
         );
         const email = data.email;
         reset();
+        await SecureStore.setItemAsync("isNewUser", "true");
+        await AsyncStorage.removeItem("hasSeenTips");
         router.push({ pathname: "/(auth)/account-verify", params: { email } });
       },
       onError: (err: any) => {
@@ -335,6 +339,39 @@ export default function SignupScreen() {
                   {message}
                 </Text>
               )}
+              {/* Terms and Privacy Policy notice */}
+              <Text
+                style={{
+                  color: "#9ca3af",
+                  fontSize: 12,
+                  textAlign: "center",
+                  marginTop: 18,
+                  marginBottom: 8,
+                  fontFamily: "Nunito-Regular",
+                }}
+              >
+                By signing up, you agree to our{" "}
+                <Text
+                  style={{ color: "#ff003c", textDecorationLine: "underline" }}
+                  onPress={() => {
+                    // Replace with your actual terms URL
+                    window.open("https://tunenova.com/terms", "_blank");
+                  }}
+                >
+                  Terms and Conditions
+                </Text>{" "}
+                and{" "}
+                <Text
+                  style={{ color: "#ff003c", textDecorationLine: "underline" }}
+                  onPress={() => {
+                    // Replace with your actual privacy policy URL
+                    window.open("https://tunenova.com/privacy", "_blank");
+                  }}
+                >
+                  Privacy Policy
+                </Text>
+                .
+              </Text>
             </View>
           </ScrollView>
         </SafeAreaView>

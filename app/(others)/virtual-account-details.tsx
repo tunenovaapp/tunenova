@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
+  Modal,
+  Pressable,
   StyleSheet,
   Text,
   ToastAndroid,
@@ -11,6 +13,7 @@ import {
 } from "react-native";
 import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useMarkCampaignProcessing } from "../../api/campaign/campaign";
 
 export default function VirtualAccountDetailsScreen() {
   const router = useRouter();
@@ -19,11 +22,38 @@ export default function VirtualAccountDetailsScreen() {
     bankName = "",
     accountName = "",
     budget = "",
+    id = "",
   } = useLocalSearchParams();
+
+  // Ensure id is a string
+  const campaignId = Array.isArray(id) ? id[0] : id;
+
+  const markProcessingMutation = useMarkCampaignProcessing();
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const copyToClipboard = async (label: string, value: string) => {
     await Clipboard.setStringAsync(value);
     ToastAndroid.show(`${label} copied!`, ToastAndroid.SHORT);
+  };
+
+  const handleMarkProcessing = async () => {
+    try {
+      if (!campaignId) {
+        ToastAndroid.show("Invalid campaign ID", ToastAndroid.LONG);
+        return;
+      }
+      await markProcessingMutation.mutateAsync({ id: campaignId });
+      setShowConfirmation(true);
+      setTimeout(() => {
+        setShowConfirmation(false);
+        router.replace("/(tabs)/analytics");
+      }, 2000);
+    } catch (err: any) {
+      ToastAndroid.show(
+        err?.message || "Failed to mark as paid",
+        ToastAndroid.LONG
+      );
+    }
   };
 
   return (
@@ -143,12 +173,37 @@ export default function VirtualAccountDetailsScreen() {
           </View>
         </View>
       </View>
+      {/* I've Made Payment Button */}
       <TouchableOpacity
-        style={styles.analyticsBtn}
-        onPress={() => router.replace("/(tabs)/analytics")}
+        style={styles.paymentBtn}
+        onPress={handleMarkProcessing}
+        disabled={markProcessingMutation.isPending || showConfirmation}
+        activeOpacity={0.85}
       >
-        <Text style={styles.analyticsBtnText}>Back to Analytics</Text>
+        <Text style={styles.paymentBtnText}>
+          {markProcessingMutation.isPending
+            ? "Processing..."
+            : "I've Made Payment"}
+        </Text>
       </TouchableOpacity>
+      {showConfirmation && (
+        <Modal
+          visible={showConfirmation}
+          transparent
+          animationType="slide"
+        >
+          <Pressable style={styles.modalBackdrop}>
+            <View style={styles.bottomModalSheet}>
+              <Text style={styles.modalIcon}>✅</Text>
+              <Text style={styles.modalTitle}>Payment Processing</Text>
+              <Text style={styles.modalMessage}>
+                Thanks for letting us know! We will notify you when your
+                campaign is live.
+              </Text>
+            </View>
+          </Pressable>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -256,5 +311,71 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: RFValue(16),
     fontFamily: "Nunito-Bold",
+  },
+  paymentBtn: {
+    backgroundColor: "#00c853",
+    borderRadius: 10,
+    height: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 24,
+    marginTop: 24,
+    marginBottom: 32,
+  },
+  paymentBtnText: {
+    color: "#fff",
+    fontSize: RFValue(16),
+    fontFamily: "Nunito-Bold",
+  },
+  confirmationBox: {
+    backgroundColor: "#232326",
+    borderRadius: 10,
+    marginHorizontal: 24,
+    marginTop: 18,
+    padding: 16,
+    alignItems: "center",
+  },
+  confirmationText: {
+    color: "#fff",
+    fontSize: RFValue(15),
+    fontFamily: "Nunito-Regular",
+    textAlign: "center",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  bottomModalSheet: {
+    backgroundColor: "#18181b",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 32,
+    paddingTop: 32,
+    paddingBottom: 40,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalIcon: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: RFValue(18),
+    fontFamily: "Nunito-Bold",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  modalMessage: {
+    color: "#d1d5db",
+    fontSize: RFValue(15),
+    fontFamily: "Nunito-Regular",
+    textAlign: "center",
+    lineHeight: 22,
   },
 });

@@ -21,6 +21,7 @@ import Animated, {
 import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as yup from "yup";
+import { useVerifiedUsersCount } from "../../api/user/user";
 
 import CustomPicker from "../../components/CustomPicker";
 
@@ -61,6 +62,8 @@ export default function CreateCampaignScreen() {
     transform: [{ scale: enabled.value === 1 ? 1 : 0.98 }],
   }));
 
+  const { data: verifiedUsersCount } = useVerifiedUsersCount();
+
   const onSubmit = (data: FormData) => {
     router.push({
       pathname: "/create-campaign",
@@ -82,6 +85,7 @@ export default function CreateCampaignScreen() {
             <Text style={styles.sub}>
               Promote your music to thousands of Music Fans.
             </Text>
+
             <View style={styles.divider} />
 
             {/* ------------------------------------------------------------ */}
@@ -97,6 +101,27 @@ export default function CreateCampaignScreen() {
               &amp; discover it on streaming platforms like Spotify, Apple Music
               &amp; more.
             </Text>
+
+            {verifiedUsersCount ? (
+              <Text
+                style={{
+                  fontSize: RFValue(12),
+                  color: "#d1d5db",
+                  fontFamily: "Nunito-Regular",
+                  marginTop: 5,
+                  marginBottom: 10,
+                }}
+              >
+                Tunenova Listeners:{" "}
+                <Text
+                  style={{
+                    fontFamily: "Nunito-Bold",
+                  }}
+                >
+                  {verifiedUsersCount}
+                </Text>
+              </Text>
+            ) : null}
 
             <Controller
               control={control}

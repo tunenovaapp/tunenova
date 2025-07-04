@@ -1,9 +1,8 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as DocumentPicker from "expo-document-picker";
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
-  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -12,15 +11,9 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
-import {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import { Easing, useSharedValue, withTiming } from "react-native-reanimated";
 import * as yup from "yup";
 
 import { useCreateCampaign } from "@/api/campaign/campaign";
@@ -52,7 +45,7 @@ const getValidationSchema = (campaignType: any) =>
         .test("required", "Snippet is required", (file) => file && !!file.name)
         .test(
           "size",
-          "Max size is 10 MB",
+          "Max size is 5 MB",
           (file) => !file || (file.size ?? 0) <= 5 * 1024 * 1024
         ),
       audience:
@@ -67,10 +60,10 @@ const getValidationSchema = (campaignType: any) =>
         .string()
         .optional()
         .matches(/^[\d]+(\.\d{1,2})?$/, "Enter a valid number")
-        .test("min", "Minimum amount is ₦1500", (value) => {
+        .test("min", "Minimum amount is ₦1000", (value) => {
           if (!value) return true; // Allow empty since it's optional
           const num = parseFloat(value);
-          return !isNaN(num) && num >= 1500;
+          return !isNaN(num) && num >= 1000;
         }),
     })
   );
@@ -81,6 +74,7 @@ export default function CreatePaidCampaignScreen() {
   const [message, setMessage] = React.useState<string | null>(null);
   const { mutate, isPending, isSuccess, isError, error } = useCreateCampaign();
   const router = useRouter();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   const {
     control,
@@ -110,14 +104,6 @@ export default function CreatePaidCampaignScreen() {
     easing: Easing.ease,
   });
 
-  const rPayStyle = useAnimatedStyle(() => ({
-    opacity: enabled.value,
-    transform: [{ scale: enabled.value ? 1 : 0.97 }],
-  }));
-
-  /* --------------------------------------------------------------- */
-  /*  File picker logic                                              */
-  /* --------------------------------------------------------------- */
   const handlePickSnippet = useCallback(async () => {
     const res = await DocumentPicker.getDocumentAsync({
       type: "audio/mpeg",
@@ -161,7 +147,7 @@ export default function CreatePaidCampaignScreen() {
         setMessage("Campaign created successfully!");
         setTimeout(async () => {
           if (res.data.virtualAccount?.accountNumber) {
-            // Instead of opening browser, route to virtual account details screen
+            console.log(res.data);
             router.replace({
               pathname: "/(others)/virtual-account-details",
               params: {
@@ -169,6 +155,7 @@ export default function CreatePaidCampaignScreen() {
                 bankName: res.data.virtualAccount?.bankName || "",
                 accountName: res.data.virtualAccount?.accountName || "",
                 budget: data.budget,
+                id: res.data.campaign.id,
               },
             });
           } else {
@@ -199,237 +186,222 @@ export default function CreatePaidCampaignScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, paddingTop: top }}
+      style={{ flex: 1, backgroundColor: "#000", paddingTop: top }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.container}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <TouchableOpacity onPress={() => router.back()}>
-              <Entypo
-                name="chevron-left"
-                size={24}
-                color="white"
-              />
-            </TouchableOpacity>
-            <Text style={styles.h1}>Create a campaign</Text>
-          </View>
-          <Text style={styles.sub}>
-            Promote your music to thousands of Music Fans.
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.container, { paddingBottom: 24 }]}
+        style={{ flex: 1 }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Entypo
+              name="chevron-left"
+              size={24}
+              color="white"
+            />
+          </TouchableOpacity>
+          <Text style={styles.h1}>Create a campaign</Text>
+        </View>
+        <Text style={styles.sub}>
+          Promote your music to thousands of Music Fans.
+        </Text>
+        <FieldLabel label="Song title" />
+        <Controller
+          control={control}
+          name="songTitle"
+          render={({ field: { onChange, value } }) => (
+            <Input
+              placeholder="Song name"
+              value={value}
+              onChangeText={onChange}
+              error={errors.songTitle?.message}
+            />
+          )}
+        />
+        <FieldLabel label="Song link" />
+        <Controller
+          control={control}
+          name="songLink"
+          render={({ field: { onChange, value } }) => (
+            <Input
+              placeholder="https://spotify.com..."
+              value={value}
+              onChangeText={onChange}
+              autoCapitalize="none"
+              error={errors.songLink?.message}
+            />
+          )}
+        />
+        <FieldLabel label="Genre" />
+        <Controller
+          control={control}
+          name="genre"
+          render={({ field }) => (
+            <PickerInput
+              placeholder="Choose here"
+              value={field.value}
+              onChange={field.onChange}
+              items={[
+                { label: "Afrobeats", value: "afrobeats" },
+                { label: "Pop", value: "pop" },
+                { label: "Hip-hop", value: "hiphop" },
+                { label: "Gospel", value: "gospel" },
+                { label: "Country", value: "country" },
+                { label: "R&B", value: "rnb" },
+              ]}
+              error={errors.genre?.message}
+            />
+          )}
+        />
+        <FieldLabel label="Upload Snippet" />
+        <Text style={styles.helper}>
+          Audio should be a Maximum of 5 MB and 20 seconds.{" "}
+          <Text
+            style={[styles.helper, { textDecorationLine: "underline" }]}
+            onPress={() => Linking.openURL("https://audiotrimmer.com")}
+          >
+            Easily trim your track on audiotrimmer
           </Text>
-
-          {/* ------------- Song title ---------------- */}
-          <FieldLabel label="Song title" />
-          <Controller
-            control={control}
-            name="songTitle"
-            render={({ field: { onChange, value } }) => (
-              <Input
-                placeholder="Song name"
-                value={value}
-                onChangeText={onChange}
-                error={errors.songTitle?.message}
-              />
-            )}
-          />
-
-          {/* ------------- Song link ----------------- */}
-          <FieldLabel label="Song link" />
-          <Controller
-            control={control}
-            name="songLink"
-            render={({ field: { onChange, value } }) => (
-              <Input
-                placeholder="https://spotify.com..."
-                value={value}
-                onChangeText={onChange}
-                autoCapitalize="none"
-                error={errors.songLink?.message}
-              />
-            )}
-          />
-
-          {/* ------------- Genre picker -------------- */}
-          <FieldLabel label="Genre" />
-          <Controller
-            control={control}
-            name="genre"
-            render={({ field }) => (
-              <PickerInput
-                placeholder="Choose here"
-                value={field.value}
-                onChange={field.onChange}
-                items={[
-                  { label: "Afrobeats", value: "afrobeats" },
-                  { label: "Pop", value: "pop" },
-                  { label: "Hip-hop", value: "hiphop" },
-                  { label: "Gospel", value: "gospel" },
-                  { label: "Country", value: "country" },
-                  { label: "R&B", value: "rnb" },
-                ]}
-                error={errors.genre?.message}
-              />
-            )}
-          />
-
-          {/* ------------- Upload snippet ------------ */}
-          <FieldLabel label="Upload Snippet" />
-          <Text style={styles.helper}>
-            Audio should be a Maximum of 5 MB and 20 seconds.{" "}
-            <Text
-              style={[styles.helper, { textDecorationLine: "underline" }]}
-              onPress={() => Linking.openURL("https://audiotrimmer.com")}
+        </Text>
+        <Controller
+          control={control}
+          name="snippet"
+          render={({ field: { value } }) => (
+            <TouchableOpacity
+              style={[
+                styles.attachment,
+                !!errors.snippet && { borderColor: "#ff003c" },
+              ]}
+              onPress={handlePickSnippet}
             >
-              Easily trim your track on audiotrimmer
-            </Text>
-          </Text>
-
-          <Controller
-            control={control}
-            name="snippet"
-            render={({ field: { value } }) => (
-              <TouchableOpacity
-                style={[
-                  styles.attachment,
-                  !!errors.snippet && { borderColor: "#ff003c" },
-                ]}
-                onPress={handlePickSnippet}
-              >
-                <Ionicons
-                  name="attach"
-                  size={18}
-                  color="#d1d5db"
-                  style={{ marginRight: 8 }}
-                />
-                <Text style={styles.attachText}>
-                  {value && value.name
-                    ? value.name
-                    : "No file selected. Tap to attach Mp3 file"}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
-          {errors.snippet && (
-            <Text style={styles.err}>{errors.snippet.message}</Text>
-          )}
-
-          {/* -------- Target audience picker ---------- */}
-          {campaignType !== "free" && (
-            <>
-              <FieldLabel label="Target Audience" />
-              <Text style={styles.helper}>
-                Select the type of audience on Tunenova you want to target
+              <Ionicons
+                name="attach"
+                size={18}
+                color="#d1d5db"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.attachText}>
+                {value && value.name
+                  ? value.name
+                  : "No file selected. Tap to attach Mp3 file"}
               </Text>
-              <Controller
-                control={control}
-                name="audience"
-                render={({ field }) => (
-                  <PickerInput
-                    placeholder="Choose one"
-                    value={field.value}
-                    onChange={(val) => field.onChange([val])}
-                    items={[
-                      { label: "Spotify", value: "spotify" },
-                      { label: "Youtube", value: "youtube" },
-                      { label: "Apple Music", value: "apple-music" },
-                      { label: "Boomplay", value: "boomplay" },
-                    ]}
-                    error={errors.audience?.message}
-                    arrayValue={true}
-                  />
-                )}
-              />
-            </>
+            </TouchableOpacity>
           )}
-
-          {/* -------------- Budget -------------------- */}
-          {campaignType !== "free" ? (
-            <>
-              <FieldLabel label="Set Budget" />
-              <Controller
-                control={control}
-                name="budget"
-                render={({ field: { onChange, value } }) => (
-                  <Input
-                    placeholder="Amount"
-                    keyboardType="numeric"
-                    value={value}
-                    onChangeText={onChange}
-                    error={errors.budget?.message}
-                  />
-                )}
-              />
-            </>
+        />
+        {errors.snippet && (
+          <Text style={styles.err}>{errors.snippet.message}</Text>
+        )}
+        {campaignType !== "free" && (
+          <>
+            <FieldLabel label="Target Audience" />
+            <Text style={styles.helper}>
+              Select the type of audience on Tunenova you want to target
+            </Text>
+            <Controller
+              control={control}
+              name="audience"
+              render={({ field }) => (
+                <PickerInput
+                  placeholder="Choose one"
+                  value={field.value}
+                  onChange={(val) => field.onChange([val])}
+                  items={[
+                    { label: "Spotify", value: "spotify" },
+                    { label: "Youtube", value: "youtube" },
+                    { label: "Apple Music", value: "apple-music" },
+                  ]}
+                  error={errors.audience?.message}
+                  arrayValue={true}
+                />
+              )}
+            />
+            <FieldLabel label="Set Budget" />
+            <Controller
+              control={control}
+              name="budget"
+              render={({ field: { onChange, value } }) => (
+                <Input
+                  placeholder="Amount"
+                  keyboardType="numeric"
+                  value={value}
+                  onChangeText={onChange}
+                  error={errors.budget?.message}
+                />
+              )}
+            />
+            {Number(watch("budget")) > 20 && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "Nunito-Regular",
+                    color: "white",
+                    marginTop: 30,
+                  }}
+                >
+                  Estimated Listeners:
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Nunito-Bold",
+                    color: "white",
+                    marginTop: 30,
+                    fontSize: 18,
+                  }}
+                >
+                  {Number(watch("budget")) / 20} -{" "}
+                  {Number(watch("budget")) / 20 + 50}
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={[
+            styles.payBtn,
+            !isValid || isPending ? styles.payBtnDisabled : null,
+            { marginTop: 24 },
+          ]}
+          disabled={!isValid || isPending}
+          onPress={handleSubmit(onSubmit)}
+        >
+          {isPending ? (
+            <Text style={styles.payTxt}>Submitting...</Text>
           ) : (
-            ""
+            <Text style={styles.payTxt}>
+              {campaignType === "free" ? "Upload Song" : "Pay Now"}
+            </Text>
           )}
-
-          {campaignType !== "free" && Number(watch("budget")) > 20 ? (
-            <View
+        </TouchableOpacity>
+        {message && (
+          <View style={styles.messageRow}>
+            {isSuccess ? (
+              <Text style={styles.successIcon}>✔️</Text>
+            ) : isError ? (
+              <Text style={styles.errorIcon}>❌</Text>
+            ) : null}
+            <Text
               style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
+                color: isSuccess ? "#34d399" : "#ff4d67",
+                textAlign: "center",
+                marginTop: 8,
+                fontFamily: "Nunito-Bold",
               }}
             >
-              <Text
-                style={{
-                  fontFamily: "Nunito-Regular",
-                  color: "white",
-                  marginTop: 30,
-                }}
-              >
-                Estimated Listeners:
-              </Text>
-              <Text
-                style={{
-                  fontFamily: "Nunito-Bold",
-                  color: "white",
-                  marginTop: 30,
-                  fontSize: 18,
-                }}
-              >
-                {Number(watch("budget")) / 20} -{" "}
-                {Number(watch("budget")) / 20 + 50}
-              </Text>
-            </View>
-          ) : (
-            ""
-          )}
-
-          {/* -------------- Pay Now ------------------- */}
-          <View style={[styles.payWrapper, rPayStyle]}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.payBtn}
-              disabled={!isValid || isPending}
-              onPress={handleSubmit(onSubmit)}
-            >
-              <Text style={styles.payTxt}>
-                {isPending
-                  ? "Submitting..."
-                  : campaignType === "free"
-                  ? "Upload Song"
-                  : "Pay Now"}
-              </Text>
-            </TouchableOpacity>
-            {message && (
-              <Text
-                style={{
-                  color: isSuccess ? "#34d399" : "#ff4d67",
-                  textAlign: "center",
-                  marginTop: 12,
-                }}
-              >
-                {message}
-              </Text>
-            )}
+              {message}
+            </Text>
           </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
+        )}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -486,9 +458,6 @@ const PickerInput = ({
   </View>
 );
 
-/* =================================================================== */
-/*  Styles                                                             */
-/* =================================================================== */
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 24,
@@ -561,9 +530,14 @@ const styles = StyleSheet.create({
   payBtn: {
     backgroundColor: "#ff003c",
     borderRadius: 10,
-    height: 58,
+    height: 54,
     alignItems: "center",
     justifyContent: "center",
+    width: "100%",
+    marginBottom: 0,
+  },
+  payBtnDisabled: {
+    opacity: 0.5,
   },
   payTxt: {
     color: "#fff",
@@ -574,5 +548,33 @@ const styles = StyleSheet.create({
     color: "#ff4d67",
     marginTop: 4,
     fontSize: 13,
+  },
+  stickyBar: {
+    backgroundColor: "#18181b",
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    borderTopColor: "#232326",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  messageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+    gap: 8,
+  },
+  successIcon: {
+    fontSize: 18,
+    marginRight: 4,
+  },
+  errorIcon: {
+    fontSize: 18,
+    marginRight: 4,
   },
 });

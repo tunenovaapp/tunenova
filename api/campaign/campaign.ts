@@ -453,3 +453,47 @@ export function useDeleteCampaign() {
     },
   });
 }
+
+// Mark campaign as processing (payment made)
+export interface MarkProcessingBody {
+  id: string | number;
+}
+
+export interface MarkProcessingResponse {
+  success: boolean;
+  message: string;
+}
+
+const markProcessingRequest = async ({
+  id,
+}: MarkProcessingBody): Promise<MarkProcessingResponse> => {
+  const { data } = await api.post<MarkProcessingResponse>(
+    `/campaigns/${id}/mark-processing`
+  );
+  return data;
+};
+
+export function useMarkCampaignProcessing(
+  options?: UseMutationOptions<
+    MarkProcessingResponse,
+    AxiosError<ApiError>,
+    MarkProcessingBody
+  >
+) {
+  const qc = useQueryClient();
+  return useMutation<
+    MarkProcessingResponse,
+    AxiosError<ApiError>,
+    MarkProcessingBody
+  >({
+    mutationFn: markProcessingRequest,
+    ...{
+      ...options,
+      onSuccess: (data, variables, context) => {
+        // Invalidate campaign queries if needed
+        qc.invalidateQueries({ queryKey: ["campaign", variables.id] });
+        options?.onSuccess?.(data, variables, context);
+      },
+    },
+  });
+}

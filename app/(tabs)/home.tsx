@@ -1,17 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import { useAudioPlayerStatus } from "expo-audio";
 import { Image } from "expo-image";
-import { usePathname } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import type { ReactNode } from "react";
-import React, {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { memo, useEffect, useState } from "react";
 import {
   Dimensions,
   Linking,
@@ -46,12 +38,8 @@ import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useProfile } from "../../api/auth/auth";
-import {
-  useDiscoverCampaign,
-  useExploreCampaigns,
-  useLikeCampaign,
-  useListenToCampaign,
-} from "../../api/campaign/campaign";
+import { useVerifiedUsersCount } from "../../api/user/user";
+import { usePlayer } from "../../components/PlayerContext";
 import { Skeleton } from "./wallet";
 
 /**
@@ -185,12 +173,12 @@ const Header: React.FC<HeaderProps> = memo(function Header({
       />
       <Text
         style={{
-          fontFamily: "Nunito-Medium",
+          fontFamily: "RedditSans-Bold",
           color: "#fff",
-          fontSize: RFValue(20),
+          fontSize: RFValue(18),
         }}
       >
-        {`Hello, ${userFirstLetter}!`}
+        {`Hey ${userFirstLetter} 🎧`}
       </Text>
     </View>
   );
@@ -239,6 +227,7 @@ type PlayerProgressProps = {
   discoverMutate: (data: { id: string }) => void;
   setIsPaused: (v: boolean) => void;
   handleNext: () => void;
+  listenMutate: (data: { id: string }) => void;
 };
 const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
   function PlayerProgress({
@@ -252,6 +241,7 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
     discoverMutate,
     setIsPaused,
     handleNext,
+    listenMutate,
   }) {
     const status = useAudioPlayerStatus(player);
     const progress = useDerivedValue(() => {
@@ -273,6 +263,7 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
       if (hasFinished) {
         player.pause();
 
+        listenMutate({ id: campaign.id });
         if (campaign?.isPaid) {
           setShowModal(true);
           return;
@@ -304,6 +295,7 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
       setIsPaused(true);
 
       if (campaign.isPaid) {
+        listenMutate({ id: campaign.id });
         setShowModal(true);
         return;
       }
@@ -384,6 +376,7 @@ type PlayerAreaProps = {
   setShowModal: (v: boolean) => void;
   setIsPaused: (v: boolean) => void;
   discoverMutate: (data: { id: string }) => void;
+  listenMutate: (data: { id: string }) => void;
 };
 const PlayerArea: React.FC<PlayerAreaProps> = memo(function PlayerArea({
   player,
@@ -399,6 +392,7 @@ const PlayerArea: React.FC<PlayerAreaProps> = memo(function PlayerArea({
   setShowModal,
   discoverMutate,
   setIsPaused,
+  listenMutate,
 }) {
   // Open songLink in browser
 
@@ -431,6 +425,7 @@ const PlayerArea: React.FC<PlayerAreaProps> = memo(function PlayerArea({
           discoverMutate={discoverMutate}
           setIsPaused={setIsPaused}
           handleNext={handleNext}
+          listenMutate={listenMutate}
         />
       </GestureDetector>
     </>
@@ -662,20 +657,30 @@ const ErrorState: React.FC<ErrorStateProps> = memo(function ErrorState({
 });
 
 export default function ExplorePlayerScreen() {
-  const [page, setPage] = useState(1);
-  const { data, isLoading, isError, refetch, isFetching } = useExploreCampaigns(
-    { page }
-  );
-  const pathname = usePathname();
+  // Player context
+  const {
+    player,
+    isPaused,
+    setIsPaused,
+    currentIdx,
+    setCurrentIdx,
+    campaigns,
+    campaign,
+    play,
+    pause,
+    next,
+    previous,
+    like,
+    dislike,
+    refreshing,
+    onRefresh,
+    isLoading,
+    listenMutate,
+    discoverMutate,
+  } = usePlayer();
 
-  const campaigns = useMemo(() => data?.data?.campaigns || [], [data]);
-  const pagination = data?.data?.pagination;
-  const [currentIdx, setCurrentIdx] = useState(0);
+  // UI state (modals, tips, animation)
   const [showModal, setShowModal] = useState(false);
-  const colorProgress = useSharedValue(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const thump = useSharedValue(1);
-  const [isPaused, setIsPaused] = useState(false);
   const [showTipsModal, setShowTipsModal] = useState(false);
   const [currentTipIdx, setCurrentTipIdx] = useState(0);
   const tips = [
@@ -689,146 +694,35 @@ export default function ExplorePlayerScreen() {
     "right"
   );
 
-  const { data: profileData } = useProfile();
-  const userFirstLetter =
-    profileData?.data?.name?.trim()?.charAt(0)?.toUpperCase() || "C";
-
-  // Start animations
-  useEffect(() => {
-    if (!isPaused) {
-      // Background color animation
-      colorProgress.value = withRepeat(
-        withTiming(1, { duration: 7000, easing: Easing.linear }),
-        -1,
-        true
-      );
-
-      // Thump animation
-      thump.value = withRepeat(
-        withSequence(
-          // A gentle, steady pulse
-          withTiming(1.1, {
-            duration: 600,
-            easing: Easing.inOut(Easing.ease),
-          }),
-          withTiming(1, {
-            duration: 600,
-            easing: Easing.inOut(Easing.ease),
-          })
-        ),
-        -1,
-        true // yoyo (reverses the animation)
-      );
-    } else {
-      // Pause thump animation
-      thump.value = 1;
-    }
-  }, [isPaused]);
-
+  // Animation state
+  const thump = useSharedValue(1);
   const thumpAnimationStyle = useAnimatedStyle(() => ({
     transform: [{ scale: thump.value }],
   }));
 
-  const { mutate: listenMutate } = useListenToCampaign();
-  const { mutate: likeMutate } = useLikeCampaign();
-  const { mutate: discoverMutate } = useDiscoverCampaign();
-
-  const campaign = useMemo(
-    () => campaigns[currentIdx],
-    [campaigns, currentIdx]
-  );
-  const player = useAudioPlayer(
-    campaign?.audioFileUrl ? { uri: campaign.audioFileUrl } : undefined
-  );
-
-  const isRefreshingRef = useRef(false);
-
+  // Animate thump on play/pause
   useEffect(() => {
-    if (pathname !== "/home") {
-      player.pause();
-      setIsPaused(true);
+    if (!isPaused) {
+      thump.value = withRepeat(
+        withSequence(
+          withTiming(1.1, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      );
+    } else {
+      thump.value = 1;
     }
-  }, [pathname]);
-
-  const onRefresh = useCallback(async () => {
-    if (isRefreshingRef.current) return;
-    isRefreshingRef.current = true;
-    setRefreshing(true);
-    try {
-      if (player && player.isLoaded) {
-        player.pause();
-      }
-      await refetch();
-    } finally {
-      setRefreshing(false);
-      isRefreshingRef.current = false;
-    }
-  }, [player, refetch]);
-
-  // Play the current campaign's audio and animate progress bar to match duration (fix glitch)
-  useEffect(() => {
-    if (campaign?.audioFileUrl) {
-      player.replace({ uri: campaign.audioFileUrl });
-      player.seekTo(0);
-      player.play();
-      listenMutate({ id: campaign.id });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaign?.audioFileUrl]);
-
-  console.log("current Idx", currentIdx);
-
-  // Move to next campaign or next page
-  const handleNext = async () => {
-    setSlideDirection("right");
-    setShowModal(false);
-    if (currentIdx < campaigns.length - 1) {
-      setCurrentIdx((idx) => idx + 1);
-    } else if (pagination) {
-      const nextPage = pagination.page + 1;
-      if (nextPage > pagination.totalPages) {
-        setPage(1);
-        setCurrentIdx(0);
-        player.pause();
-        await refetch();
-      } else {
-        setPage(nextPage);
-        setCurrentIdx(0);
-        player.pause();
-        await refetch();
-      }
-    }
-  };
-
-  // Move to previous campaign
-  const handlePrevious = () => {
-    setSlideDirection("left");
-    setShowModal(false);
-    if (currentIdx > 0) {
-      setCurrentIdx((idx) => idx - 1);
-    }
-  };
-
-  // No longer move to next on dislike
-  const handleDislike = () => {
-    handleNext();
-  };
-
-  // Like the campaign (no longer moves to next)
-  const handleLike = async () => {
-    likeMutate({ id: campaign.id });
-    // Show skip/discover buttons
-    if (campaign?.songLink) {
-      await WebBrowser.openBrowserAsync(campaign.songLink);
-    }
-    handleNext();
-  };
+  }, [isPaused]);
 
   // Show tips modal for first-time users
   useEffect(() => {
     (async () => {
       const seen = await AsyncStorage.getItem("hasSeenTips");
+      console.log("🔍 Home: hasSeenTips =", seen);
       if (!seen) {
+        console.log("🔍 Home: First time user, pausing for tips modal");
         setIsPaused(true);
         setTimeout(() => {
           try {
@@ -836,16 +730,22 @@ export default function ExplorePlayerScreen() {
           } catch (e) {
             console.warn("Failed to pause player:", e);
           }
-
           setShowTipsModal(true);
         }, 1500);
+      } else {
+        console.log("🔍 Home: Returning user, tips already seen");
       }
     })();
-    // Only run this when player is ready
   }, [player]);
 
-  // Skeleton loader
-  if (isLoading || isFetching) {
+  // Profile and listeners count
+  const { data: profileData } = useProfile();
+  const userFirstLetter =
+    profileData?.data?.name?.trim()?.charAt(0)?.toUpperCase() || "C";
+  const { data: verifiedUsersCount } = useVerifiedUsersCount();
+
+  // Error and loading states
+  if (isLoading) {
     return (
       <Loader
         refreshing={refreshing}
@@ -855,7 +755,7 @@ export default function ExplorePlayerScreen() {
     );
   }
 
-  if (isError || !campaign) {
+  if (!campaigns.length || !campaign) {
     return (
       <ErrorState
         refreshing={refreshing}
@@ -882,33 +782,60 @@ export default function ExplorePlayerScreen() {
         }
       >
         <Header userFirstLetter={userFirstLetter} />
+
         <PlayerArea
           player={player}
           campaign={campaign}
           thumpAnimationStyle={thumpAnimationStyle}
           isPaused={isPaused}
-          onPlayPause={() => {
-            if (isPaused) {
-              setIsPaused(false);
-              player.play();
-            } else {
-              setIsPaused(true);
-              player.pause();
-            }
-          }}
+          onPlayPause={() => (isPaused ? play() : pause())}
           slideDirection={slideDirection}
-          handleNext={handleNext}
-          handlePrevious={handlePrevious}
+          handleNext={async () => {
+            setSlideDirection("right");
+            setShowModal(false);
+            await next();
+          }}
+          handlePrevious={() => {
+            setSlideDirection("left");
+            setShowModal(false);
+            previous();
+          }}
           currentIdx={currentIdx}
           width={width}
           setShowModal={setShowModal}
           discoverMutate={discoverMutate}
+          listenMutate={listenMutate}
           setIsPaused={setIsPaused}
         />
+        {verifiedUsersCount ? (
+          <Text
+            style={{
+              marginTop: RFValue(16),
+              color: "#777",
+              textAlign: "center",
+              fontFamily: "Nunito-Regular",
+            }}
+          >
+            Tunenova Listeners:{" "}
+            <Text
+              style={{
+                fontFamily: "Nunito-Bold",
+              }}
+            >
+              {verifiedUsersCount}
+            </Text>
+          </Text>
+        ) : null}
         <LikeModal
           showModal={showModal}
-          handleLike={handleLike}
-          handleDislike={handleDislike}
+          handleLike={async () => {
+            await like();
+            setShowModal(false);
+          }}
+          handleDislike={() => {
+            dislike();
+            setShowModal(false);
+          }}
           setShowModal={setShowModal}
         />
         <TipsModal

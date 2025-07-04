@@ -2,7 +2,6 @@
 import { purgeTokens } from "@/api/apiclient";
 import { useProfile } from "@/api/auth/auth";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React from "react";
 import {
@@ -60,20 +59,35 @@ export default function ProfileScreen({ navigation }: any) {
           key={row.id}
           entering={FadeInRight.delay(i * 70)}
         >
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={styles.row}
-            onPress={() =>
-              router.push({ pathname: row.nav, params: { param: row.param } })
-            }
-          >
-            <Text style={styles.rowLabel}>{row.label}</Text>
-            <Feather
-              name="chevron-right"
-              size={20}
-              color="#fff"
-            />
-          </TouchableOpacity>
+          {row.nav ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.row}
+              onPress={() =>
+                router.push({ pathname: row.nav, params: { param: row.param } })
+              }
+            >
+              <Text style={styles.rowLabel}>{row.label}</Text>
+              <Feather
+                name="chevron-right"
+                size={20}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.row}
+              onPress={row.onPress}
+            >
+              <Text style={styles.rowLabel}>{row.label}</Text>
+              <Feather
+                name="external-link"
+                size={18}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          )}
         </Animated.View>
       ))}
 
@@ -82,7 +96,6 @@ export default function ProfileScreen({ navigation }: any) {
         activeOpacity={0.9}
         onPress={async () => {
           await purgeTokens();
-          await AsyncStorage.removeItem("hasSeenTips");
           router.replace("/(auth)/login");
         }}
       >
@@ -94,9 +107,9 @@ export default function ProfileScreen({ navigation }: any) {
         style={styles.reportCard}
         activeOpacity={0.9}
         onPress={() => {
-          // Open mail app to send email to support@tunenova.com
+          // Open mail app to send email to support@hallatechnologies.com
           Linking.openURL(
-            "mailto:support@tunenova.com?subject=Support%20Request"
+            "mailto:support@hallatechnologies.com?subject=Support%20Request"
           );
         }}
       >

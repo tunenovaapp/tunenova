@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 
 /** ---------- CONFIG ---------- */
-const API_BASE_URL = "https://soundhalla-back.onrender.com/api/v1"; // ← change to your API root
+const API_BASE_URL = "https://tunenova-back.onrender.com/api/v1"; // ← change to your API root
 const ACCESS_KEY = "access_token";
 const REFRESH_KEY = "refresh_token"; // only needed if you use refresh flow
 const TIMEOUT = 10_000; // ms

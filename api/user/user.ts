@@ -34,9 +34,9 @@ const updateGenresRequest = async (
 
 /* ────────── Hook ────────── */
 /**
- * Update the authenticated user’s preferred genres.
+ * Update the authenticated user's preferred genres.
  *
- * Automatically patches the cached “profile” data (if present) so
+ * Automatically patches the cached "profile" data (if present) so
  * the UI reflects the change instantly without an extra GET /profile call.
  */
 export function useUpdateGenres(
@@ -184,7 +184,7 @@ const fetchProfile = async (): Promise<ProfileResponse> => {
 /* ─────────────── Hook ─────────────── */
 
 /**
- * Retrieve the current user’s profile.
+ * Retrieve the current user's profile.
  *
  * @example
  * const { data, isLoading, error } = useProfile();
@@ -218,7 +218,7 @@ const fetchPreferences = async (): Promise<PreferencesResponse> => {
 /* ─────────────── Hook ─────────────── */
 
 /**
- * Retrieve the current user’s genre + platform selections.
+ * Retrieve the current user's genre + platform selections.
  *
  * @example
  * const { data, isLoading, error } = usePreferences();
@@ -234,5 +234,17 @@ export function usePreferences(
     queryKey: ["preferences"],
     queryFn: fetchPreferences,
     ...options,
+  });
+}
+
+// Fetch verified users count
+export function useVerifiedUsersCount() {
+  return useQuery({
+    queryKey: ["verified-users-count"],
+    queryFn: async () => {
+      const { data } = await api.get("/user/verified-users/count");
+      return data.totalVerifiedUsers;
+    },
+    staleTime: 120 * 1000,
   });
 }

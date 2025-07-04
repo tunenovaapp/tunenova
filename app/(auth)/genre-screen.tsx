@@ -13,7 +13,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Animated from "react-native-reanimated";
 import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -160,21 +159,6 @@ export default function GenresScreen() {
         </View>
       )}
 
-      {/* Skip link */}
-      {param !== "back" && (
-        <TouchableOpacity
-          style={styles.skipBtn}
-          onPress={() => {
-            if (param === "back") {
-              return router.back();
-            }
-            router.replace("/(tabs)/home");
-          }}
-        >
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
-      )}
-
       {param !== "back" && (
         <Text style={styles.heading}>Choose your favorite{"\n"}genres</Text>
       )}
@@ -261,16 +245,7 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: "#ff003c",
   },
-  skipBtn: {
-    zIndex: 10,
-    marginLeft: "auto",
-    marginRight: 15,
-    marginTop: 10,
-  },
-  skipText: {
-    color: "#ff0066",
-    fontSize: 16,
-  },
+
   heading: {
     fontSize: 28,
     color: "#fff",

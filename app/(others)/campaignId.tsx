@@ -119,6 +119,7 @@ export default function CampaignAnalyticsScreen() {
                 bankName: data?.data?.virtualAccountBank || "",
                 accountName: data?.data?.virtualAccountName || "",
                 budget: data?.data.budget,
+                id: id,
               },
             });
           }}
@@ -137,7 +138,7 @@ export default function CampaignAnalyticsScreen() {
           onPress={async () => {
             try {
               await deleteMutation.mutateAsync(id);
-              router.replace("/(tabs)/promote");
+              router.replace("/(tabs)/analytics");
             } catch (err: any) {
               alert(err.message || "Failed to delete campaign");
             }

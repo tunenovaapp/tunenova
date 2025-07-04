@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMyCampaigns } from "../../api/campaign/campaign";
@@ -27,7 +27,7 @@ export default function CampaignsScreen() {
     <View
       style={{
         paddingHorizontal: 24,
-        marginTop: 10,
+        marginTop: 5,
         marginBottom: 20,
       }}
     >
@@ -100,9 +100,11 @@ export default function CampaignsScreen() {
                   fontFamily: "Nunito-Medium",
                 }}
               >
-                {item.isPaid &&
-                  item.paymentStatus === "pending" &&
-                  "(Finish setup)"}
+                {item.isPaid && item.paymentStatus === "pending"
+                  ? "(Finish setup)"
+                  : item.paymentStatus === "processing"
+                  ? "(Payment processing)"
+                  : ""}
               </Text>
             </Text>
             <Feather
@@ -120,16 +122,18 @@ export default function CampaignsScreen() {
             }}
           >
             <Text style={styles.cardTitle}>{item.songTitle}</Text>
-            <Text
-              style={{
-                textTransform: "capitalize",
-                color: "#fff",
-                fontFamily: "Nunito-Light",
-                fontSize: RFValue(12),
-              }}
-            >
-              {item.targetAudience[0]}
-            </Text>
+            {item?.isPaid ? (
+              <Text
+                style={{
+                  textTransform: "capitalize",
+                  color: "#fff",
+                  fontFamily: "Nunito-Light",
+                  fontSize: RFValue(12),
+                }}
+              >
+                {item.targetAudience[0]}
+              </Text>
+            ) : null}
           </View>
 
           <Text style={styles.budget}>
