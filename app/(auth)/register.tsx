@@ -9,6 +9,7 @@ import {
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -355,7 +356,7 @@ export default function SignupScreen() {
                   style={{ color: "#ff003c", textDecorationLine: "underline" }}
                   onPress={() => {
                     // Replace with your actual terms URL
-                    window.open("https://tunenova.com/terms", "_blank");
+                    Linking.openURL("https://tunenova.com/terms");
                   }}
                 >
                   Terms and Conditions
@@ -365,7 +366,7 @@ export default function SignupScreen() {
                   style={{ color: "#ff003c", textDecorationLine: "underline" }}
                   onPress={() => {
                     // Replace with your actual privacy policy URL
-                    window.open("https://tunenova.com/privacy", "_blank");
+                    Linking.openURL("https://tunenova.com/privacy");
                   }}
                 >
                   Privacy Policy

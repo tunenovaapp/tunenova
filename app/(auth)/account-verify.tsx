@@ -16,7 +16,6 @@ import {
   View,
 } from "react-native";
 import Animated, {
-  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -152,7 +151,7 @@ export default function AccountVerificationScreen() {
       {
         onSuccess: () => {
           setMessage("Verification successful! Redirecting...");
-          setTimeout(() => router.push("/(auth)/music-platform"), 1200);
+          setTimeout(() => router.replace("/(auth)/music-platform"), 1200);
         },
         onError: (err: any) => {
           setMessage(

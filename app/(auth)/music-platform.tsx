@@ -169,7 +169,7 @@ export default function MusicPlatformScreen() {
             if (param === "back") {
               return router.back();
             }
-            router.push("/(auth)/genre-screen");
+            router.replace("/(auth)/genre-screen");
           }, 1000);
         },
         onError: (err: any) => {

@@ -192,7 +192,7 @@ const MetaInfo: React.FC<MetaInfoProps> = memo(function MetaInfo({
 }) {
   return (
     <View style={styles.innerMetaContainer}>
-      <Animated.Text
+      {/* <Animated.Text
         entering={slideDirection === "right" ? SlideInRight : SlideInLeft}
         exiting={slideDirection === "right" ? SlideOutLeft : SlideOutRight}
         style={[styles.title, { marginBottom: 4 }]}
@@ -200,7 +200,7 @@ const MetaInfo: React.FC<MetaInfoProps> = memo(function MetaInfo({
         key={campaign.songTitle}
       >
         {campaign.songTitle}
-      </Animated.Text>
+      </Animated.Text> */}
       {campaign.isPaid && (
         <Animated.Text
           entering={slideDirection === "right" ? SlideInRight : SlideInLeft}
@@ -278,7 +278,7 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
       const duration = status?.duration ?? 0;
       const requiredTime = Math.min(10, duration / 2);
 
-      if (currentTime < requiredTime) {
+      if (currentTime < requiredTime || !status) {
         ToastAndroid.show(
           `Listen for at least ${Math.ceil(
             requiredTime
@@ -934,7 +934,7 @@ const styles = StyleSheet.create({
   sponsored: {
     color: "#9ca3af",
     marginBottom: 16,
-    fontFamily: "Nunito-Regular",
+    fontFamily: "Nunito-Bold",
     textAlign: "center",
   },
   timeRow: {

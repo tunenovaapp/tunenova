@@ -2,20 +2,27 @@
   "expo": {
     "name": "Tunenova",
     "slug": "tunenova",
-    "version": "1.0.0",
+    "version": "2.1.3",
+    "company": "HallaTech",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tunenova",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.caribou97499.tunenova",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "companyName": "HallaTech"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#000000"
       },
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -40,7 +47,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-audio"
+      "expo-audio",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

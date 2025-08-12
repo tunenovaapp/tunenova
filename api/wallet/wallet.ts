@@ -157,6 +157,8 @@ export function useBalance(
   return useQuery<BalanceResponse, AxiosError<ApiError>>({
     queryKey: ["balance"],
     queryFn: fetchBalance,
+    staleTime: 10000,
+    refetchInterval: 10000,
     retry: true,
     ...options,
   });
@@ -351,6 +353,47 @@ export function useBankAccounts(
   return useQuery<BankAccountsResponse, AxiosError<ApiError>>({
     queryKey: ["bank-accounts"],
     queryFn: fetchBankAccounts,
+    ...options,
+  });
+}
+
+export interface VirtualAccountResponse {
+  success: true;
+  data: {
+    accountName: string;
+    accountNumber: string;
+    bankName: string;
+  };
+}
+
+/* ─────────── Fetcher ─────────── */
+
+const fetchVirtualAccount = async (): Promise<VirtualAccountResponse> => {
+  const { data } = await api.get<VirtualAccountResponse>(
+    "/wallets/virtual-account"
+  );
+  return data;
+};
+
+/* ─────────── Hook ─────────── */
+
+/**
+ * Retrieve the current user's wallet balance.
+ *
+ * @example
+ * const { data, isLoading } = useVirtualAccount();
+ */
+export function useVirtualAccount(
+  options?: UseQueryOptions<
+    VirtualAccountResponse,
+    AxiosError<ApiError>,
+    VirtualAccountResponse
+  >
+) {
+  return useQuery<VirtualAccountResponse, AxiosError<ApiError>>({
+    queryKey: ["virtual-account"],
+    queryFn: fetchVirtualAccount,
+    retry: true,
     ...options,
   });
 }

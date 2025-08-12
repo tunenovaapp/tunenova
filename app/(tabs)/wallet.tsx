@@ -17,6 +17,7 @@ import {
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
@@ -189,13 +190,41 @@ export default function WalletScreen({ navigation }: any) {
                 <Text style={[styles.balance]}>
                   ₦{Number(balanceData?.data.wallet.balance).toFixed(2)}
                 </Text>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={styles.withdrawBtn}
-                  onPress={() => setSheetVisible(true)}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
                 >
-                  <Text style={styles.withdrawText}>Withdraw</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={styles.withdrawBtn}
+                    onPress={() => setSheetVisible(true)}
+                  >
+                    <Text style={styles.withdrawText}>Withdraw</Text>
+                  </TouchableOpacity>
+                  {/* Top Up Button (full width, below balance card) */}
+                  {!isBalanceLoading &&
+                  stats?.campaignsCreated !== null &&
+                  stats?.campaignsCreated !== undefined &&
+                  stats?.campaignsCreated > 0 ? (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      style={[
+                        styles.withdrawBtn,
+                        { backgroundColor: "#0070BB" },
+                      ]}
+                      onPress={() => {
+                        router.push("/(others)/virtual-account-details");
+                      }}
+                    >
+                      <Text style={styles.withdrawText}>Top Up</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <></>
+                  )}
+                </View>
               </View>
             )}
 
@@ -996,8 +1025,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 20,
+    marginBottom: 8,
   },
   withdrawText: {
+    color: "#fff",
+    fontSize: RFValue(14),
+    fontFamily: "Nunito-Medium",
+    textAlign: "center",
+  },
+  topupBtn: {
+    width: width - 40,
+    alignSelf: "center",
+    backgroundColor: "#ff003c",
+    borderRadius: 10,
+    paddingVertical: 16,
+    marginTop: 16,
+  },
+  topupText: {
     color: "#fff",
     fontSize: RFValue(14),
     fontFamily: "Nunito-Medium",

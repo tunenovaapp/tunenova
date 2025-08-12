@@ -133,12 +133,70 @@ export function useUpdatePlatforms(
   });
 }
 
+export interface UpdateNotificationsBody {
+  expoPushToken?: string;
+  notificationsEnabled?: boolean;
+}
+
+export interface UpdateNotificationsResponse {
+  message: string;
+  expoPushToken?: string;
+  notificationsEnabled?: boolean;
+}
+
+const updateNotificationsRequest = async (
+  body: UpdateNotificationsBody
+): Promise<UpdateNotificationsResponse> => {
+  const { data } = await api.put<UpdateNotificationsResponse>(
+    "/user/notifications",
+    body
+  );
+  return data;
+};
+
+export function useUpdateNotifications(
+  options?: UseMutationOptions<
+    UpdateNotificationsResponse,
+    AxiosError<ApiError>,
+    UpdateNotificationsBody
+  >
+) {
+  const qc = useQueryClient();
+  return useMutation<
+    UpdateNotificationsResponse,
+    AxiosError<ApiError>,
+    UpdateNotificationsBody
+  >({
+    mutationFn: updateNotificationsRequest,
+    ...{
+      ...options,
+      onSuccess: (data, variables, context) => {
+        // Optionally patch profile cache if needed
+        qc.setQueryData<ProfileResponse>(["profile"], (old) =>
+          old
+            ? {
+                ...old,
+                data: {
+                  ...old.data,
+                  notificationsEnabled: data.notificationsEnabled,
+                  expoPushToken: data.expoPushToken,
+                },
+              }
+            : old
+        );
+        options?.onSuccess?.(data, variables, context);
+      },
+    },
+  });
+}
+
 /* ─────────── Types ─────────── */
 
 export interface StatsData {
   listens: number;
   referrals: number;
   discoveries: number;
+  campaignsCreated: number;
 }
 
 export type StatsResponse = StatsData; // endpoint returns raw JSON, no wrapper
@@ -246,5 +304,43 @@ export function useVerifiedUsersCount() {
       return data.totalVerifiedUsers;
     },
     staleTime: 120 * 1000,
+  });
+}
+
+export interface CouponsData {
+  id: number;
+  value: string;
+  balance: string;
+  currency: string;
+  expiresAt: Date | null;
+  description: string | null;
+}
+
+export interface CouponsResponse {
+  success: boolean;
+  data: CouponsData[];
+}
+
+/* ─────────── Fetcher ─────────── */
+
+const fetchCoupons = async (): Promise<CouponsResponse> => {
+  const { data } = await api.get<CouponsResponse>("/user/coupons");
+  return data;
+};
+
+/* ─────────── Hook ─────────── */
+
+export function useCoupons(
+  options?: UseQueryOptions<
+    CouponsResponse,
+    AxiosError<ApiError>,
+    CouponsResponse
+  >
+) {
+  return useQuery<CouponsResponse, AxiosError<ApiError>>({
+    queryKey: ["coupons"],
+    queryFn: fetchCoupons,
+    retry: true,
+    ...options,
   });
 }

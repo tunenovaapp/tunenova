@@ -207,6 +207,7 @@ export interface CampaignAnalytics {
 
 export interface CampaignDetail extends Campaign {
   paymentStatus: string;
+  complete: boolean;
   analytics: CampaignAnalytics;
   virtualAccountName: string;
   virtualAccountNumber: string;
@@ -302,6 +303,7 @@ export function useExploreCampaigns(
       keepPreviousData: true, // good UX when paging
       ...options,
     },
+    retry: true,
   });
 }
 
@@ -495,5 +497,47 @@ export function useMarkCampaignProcessing(
         options?.onSuccess?.(data, variables, context);
       },
     },
+  });
+}
+
+export interface DuplicateCampaignBody {
+  campaignId: string | number;
+  newBudget: number | string;
+  couponId?: string | number;
+}
+
+export interface DuplicateCampaignResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    campaign: CampaignSummary;
+    paymentMethod: string;
+  };
+}
+
+const duplicateCampaignRequest = async (
+  body: DuplicateCampaignBody
+): Promise<DuplicateCampaignResponse> => {
+  const { data } = await api.post<DuplicateCampaignResponse>(
+    "/campaigns/duplicate",
+    body
+  );
+  return data;
+};
+
+export function useDuplicateCampaign(
+  options?: UseMutationOptions<
+    DuplicateCampaignResponse,
+    AxiosError<ApiError>,
+    DuplicateCampaignBody
+  >
+) {
+  return useMutation<
+    DuplicateCampaignResponse,
+    AxiosError<ApiError>,
+    DuplicateCampaignBody
+  >({
+    mutationFn: duplicateCampaignRequest,
+    ...options,
   });
 }

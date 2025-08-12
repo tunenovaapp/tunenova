@@ -86,6 +86,7 @@ export default function CampaignsScreen() {
             pathname: "/(others)/campaignId",
             params: {
               id: item.id,
+              platform: item.targetAudience?.[0],
             },
           });
         }}

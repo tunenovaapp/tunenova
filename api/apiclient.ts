@@ -1,8 +1,9 @@
 import axios, { AxiosRequestConfig } from "axios";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 
 /** ---------- CONFIG ---------- */
+// const API_BASE_URL = "https://soundhalla-back.onrender.com/api/v1"; // ← change to your API root
 const API_BASE_URL = "https://tunenova-back.onrender.com/api/v1"; // ← change to your API root
 const ACCESS_KEY = "access_token";
 const REFRESH_KEY = "refresh_token"; // only needed if you use refresh flow
@@ -43,7 +44,11 @@ api.interceptors.response.use(
       if (!refresh) {
         // No refresh token – force logout / fall back
         await purgeTokens();
-        router.replace("/(auth)/login");
+        const pathname = usePathname();
+        if (!pathname.includes("login") || !pathname.includes("register")) {
+          // Already on login/register page, no need to redirect
+          router.replace("/(auth)/login");
+        }
         return Promise.reject(error);
       }
 

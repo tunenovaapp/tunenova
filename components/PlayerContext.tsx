@@ -4,6 +4,7 @@ import {
   useLikeCampaign,
   useListenToCampaign,
 } from "@/api/campaign/campaign";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAudioPlayer } from "expo-audio";
 import { usePathname } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -17,7 +18,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, ToastAndroid } from "react-native";
+import { AppState, Linking, ToastAndroid } from "react-native";
 
 // Types
 interface PlayerContextType {
@@ -56,6 +57,8 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   );
   const pathname = usePathname();
 
+  const queryClient = useQueryClient();
+
   // Debug: Log initial pathname
   useEffect(() => {
     console.log("🔍 PlayerContext: Initial pathname =", pathname);
@@ -76,10 +79,9 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   const { mutate: likeMutate } = useLikeCampaign();
   const { mutate: discoverMutate } = useDiscoverCampaign();
 
-  const campaign = useMemo(
-    () => campaigns[currentIdx],
-    [campaigns, currentIdx]
-  );
+  const campaign = useMemo(() => {
+    return campaigns[currentIdx];
+  }, [campaigns, currentIdx]);
   const player = useAudioPlayer(
     campaign?.audioFileUrl ? { uri: campaign.audioFileUrl } : undefined
   );
@@ -152,8 +154,6 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
         }, 1000);
       } else if (nextAppState === "background") {
         console.log("🔍 PlayerContext: App went to background, pausing");
-        player.pause();
-        setIsPaused(true);
       }
     };
     const subscription = AppState.addEventListener(
@@ -178,19 +178,27 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaign?.audioFileUrl]);
+  }, [campaign?.audioFileUrl, currentIdx]);
 
   // Navigation
   const next = useCallback(
     async (paused = false) => {
       if (currentIdx < campaigns.length - 1) {
-        setCurrentIdx((idx) => idx + 1);
+        setCurrentIdx((idx) => {
+          console.log("idx", idx);
+          return idx + 1;
+        });
         if (paused) setIsPaused(true);
       } else if (pagination) {
         const nextPage = pagination.page + 1;
         if (nextPage > pagination.totalPages) {
           setPage(1);
           setCurrentIdx(0);
+          if (nextPage - 1 === 1) {
+            queryClient.invalidateQueries({
+              queryKey: ["explore", 1, 10],
+            });
+          }
           player.pause();
           await refetch();
         } else {
@@ -223,6 +231,8 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   const like = useCallback(async () => {
     if (!campaign) return;
     likeMutate({ id: campaign.id });
+    await Linking.openURL(campaign.songLink!);
+    next();
   }, [campaign, likeMutate]);
 
   const dislike = useCallback(() => {

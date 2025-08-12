@@ -203,6 +203,7 @@ export interface UserProfile {
   referredCode: string | null;
   selectedGenres: string[] | null;
   selectedPlatforms: string[] | null;
+  notificationsEnabled: boolean;
 }
 
 export interface ProfileResponse {
