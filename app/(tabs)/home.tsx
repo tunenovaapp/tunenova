@@ -1,3 +1,4 @@
+import { useNotification } from "@/context/notificationsContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAudioPlayerStatus } from "expo-audio";
 import { Image } from "expo-image";
@@ -38,18 +39,12 @@ import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useProfile } from "../../api/auth/auth";
-import { useVerifiedUsersCount } from "../../api/user/user";
+import {
+  useUpdateNotifications,
+  useVerifiedUsersCount,
+} from "../../api/user/user";
 import { usePlayer } from "../../components/PlayerContext";
 import { Skeleton } from "./wallet";
-
-/**
- * ----------------------------------------------------------------------------
- *  MusicPlayerScreen – minimal promo‑snippet player (25s clip)
- * ----------------------------------------------------------------------------
- *  •   Progress bar driven by Reanimated (0 → 25s).
- *  •   Top‑right wallet pill; bottom tab‑bar with 4 icons (Home active).
- * ----------------------------------------------------------------------------
- */
 
 const { width, height } = Dimensions.get("window");
 
@@ -394,8 +389,6 @@ const PlayerArea: React.FC<PlayerAreaProps> = memo(function PlayerArea({
   setIsPaused,
   listenMutate,
 }) {
-  // Open songLink in browser
-
   return (
     <>
       <GestureDetector
@@ -743,6 +736,25 @@ export default function ExplorePlayerScreen() {
   const userFirstLetter =
     profileData?.data?.name?.trim()?.charAt(0)?.toUpperCase() || "C";
   const { data: verifiedUsersCount } = useVerifiedUsersCount();
+  const { expoPushToken } = useNotification();
+
+  const {
+    mutate: updateNotifications,
+    isPending: notifPending,
+    isError: notifError,
+    isSuccess: notifSuccess,
+  } = useUpdateNotifications({
+    onSuccess: () => {
+      console.log("🔔 Notifications updated successfully");
+    },
+  });
+
+  useEffect(() => {
+    // Update notifications with the latest Expo Push Token
+    if (expoPushToken && !notifPending && !notifError && !notifSuccess) {
+      updateNotifications({ expoPushToken, notificationsEnabled: true });
+    }
+  });
 
   // Error and loading states
   if (isLoading) {

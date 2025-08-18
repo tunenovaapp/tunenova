@@ -6,6 +6,7 @@ import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import * as Updates from "expo-updates";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -55,6 +56,8 @@ export default function RootLayout() {
   if (!loaded && !error) {
     return null;
   }
+
+  console.log(Updates.checkAutomatically, " Updates.checkAutomatically");
 
   return (
     <NotificationProvider>

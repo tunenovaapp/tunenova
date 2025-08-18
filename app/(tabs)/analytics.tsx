@@ -4,6 +4,7 @@ import React from "react";
 import {
   ActivityIndicator,
   FlatList,
+  RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
@@ -16,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useMyCampaigns } from "../../api/campaign/campaign";
 
 export default function CampaignsScreen() {
-  const { data, isLoading, error } = useMyCampaigns();
+  const { data, isLoading, error, refetch, isFetching } = useMyCampaigns();
   const campaigns = data?.data || [];
   const hasData = campaigns.length > 0;
 
@@ -204,6 +205,14 @@ export default function CampaignsScreen() {
           renderItem={Card}
           contentContainerStyle={{ paddingBottom: 50 }}
           ItemSeparatorComponent={() => <View style={{ height: 22 }} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={isFetching}
+              onRefresh={refetch}
+              tintColor="#ff003c"
+              colors={["#ff003c"]}
+            />
+          }
         />
       ) : (
         <View style={{ justifyContent: "flex-start" }}>

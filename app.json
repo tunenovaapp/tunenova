@@ -2,7 +2,7 @@
   "expo": {
     "name": "Tunenova",
     "slug": "tunenova",
-    "version": "2.1.3",
+    "version": "2.1.4",
     "company": "HallaTech",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -58,6 +58,14 @@
       "eas": {
         "projectId": "de9ef734-5b45-4bcd-8836-ff073aebf417"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/de9ef734-5b45-4bcd-8836-ff073aebf417",
+      "checkAutomatically": "ON_LOAD",
+      "enabled": true
     }
   }
 }

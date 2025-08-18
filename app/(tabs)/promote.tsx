@@ -23,6 +23,7 @@ import { useCoupons } from "@/api/user/user";
 import { useBalance } from "@/api/wallet/wallet";
 import CustomPicker from "@/components/CustomPicker";
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import Modal from "react-native-modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -77,6 +78,7 @@ const getValidationSchema = yup.lazy(() =>
 );
 
 export default function CreatePaidCampaignScreen() {
+  const queryClient = useQueryClient();
   const { bottom, top } = useSafeAreaInsets();
   const [message, setMessage] = React.useState<string | null>(null);
   const [showTopUpButton, setShowTopUpButton] = useState(false);
@@ -198,6 +200,10 @@ export default function CreatePaidCampaignScreen() {
             });
           } else {
             reset();
+            queryClient.invalidateQueries({
+              queryKey: ["my-campaigns", "coupons", "balance"],
+            });
+            setMessage(null);
             router.replace("/(tabs)/analytics");
           }
         }, 1000);

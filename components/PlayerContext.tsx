@@ -18,7 +18,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Linking, ToastAndroid } from "react-native";
+import { AppState, Linking, Platform, ToastAndroid } from "react-native";
 
 // Types
 interface PlayerContextType {
@@ -76,7 +76,7 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const { mutate: listenMutate } = useListenToCampaign();
-  const { mutate: likeMutate } = useLikeCampaign();
+  const { mutateAsync: likeMutate } = useLikeCampaign();
   const { mutate: discoverMutate } = useDiscoverCampaign();
 
   const campaign = useMemo(() => {
@@ -229,10 +229,18 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   }, [player]);
 
   const like = useCallback(async () => {
-    if (!campaign) return;
-    likeMutate({ id: campaign.id });
-    await Linking.openURL(campaign.songLink!);
-    next();
+    try {
+      if (!campaign) return;
+      await likeMutate({ id: campaign.id });
+      await Linking.openURL(campaign.songLink!);
+      next();
+    } catch (e) {
+      if (Platform.OS === "android") {
+        ToastAndroid.show("Failed to like campaign", ToastAndroid.SHORT);
+      } else {
+        alert("Failed to like campaign");
+      }
+    }
   }, [campaign, likeMutate]);
 
   const dislike = useCallback(() => {
