@@ -233,7 +233,7 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   const like = useCallback(async () => {
     try {
       if (!campaign) return;
-      await likeMutate({ id: campaign.id });
+      await likeMutate({ id: campaign?.id });
       await Linking.openURL(campaign.songLink!);
       next();
     } catch (e) {
@@ -246,8 +246,9 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   }, [campaign, likeMutate]);
 
   const dislike = useCallback(async () => {
+    if (!campaign) return;
     try {
-      await dislikeMutate({ id: campaign.id });
+      await dislikeMutate({ id: campaign?.id });
       next();
     } catch (e) {
       if (Platform.OS === "android") {
@@ -256,7 +257,7 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
         alert("Failed to like campaign");
       }
     }
-  }, [campaign.id]);
+  }, [campaign]);
 
   // Refresh
   const isRefreshingRef = useRef(false);
