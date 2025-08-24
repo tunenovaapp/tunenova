@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Animated from "react-native-reanimated";
 import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMyCampaigns } from "../../api/campaign/campaign";
@@ -71,14 +70,15 @@ export default function CampaignsScreen() {
   /*  Campaign card component                                        */
   /* --------------------------------------------------------------- */
   const Card = ({ item, index }: { item: any; index: number }) => {
-    // Calculate min and max from budget
-    const budget = item.budget || 0;
+    const budget = typeof item.budget === "number" ? item.budget : 0;
     const min = Math.floor(budget / 20);
     const max = min + 50;
-    // Use listens from API
-    const listens = item.listens || 0;
-    // Progress is listens / max (capped at 1)
-    const progress = max > 0 ? Math.min(listens / max, 1) : 0;
+
+    const listens: number = Math.max(0, +item?.listens || 0);
+
+    // Progress normalized to [min, max]
+    const denom = Math.max(max - min, 1);
+    const progress = Math.max(0, Math.min((listens - min) / denom, 1));
 
     return (
       <TouchableOpacity
@@ -133,7 +133,7 @@ export default function CampaignsScreen() {
                   fontSize: RFValue(12),
                 }}
               >
-                {item.targetAudience[0]}
+                {item.targetAudience?.[0] ?? ""}
               </Text>
             ) : null}
           </View>
@@ -141,16 +141,14 @@ export default function CampaignsScreen() {
           <Text style={styles.budget}>
             Budget:&nbsp;
             <Text style={styles.budgetAmt}>
-              {budget === 0 || budget === null
-                ? "Free"
-                : `₦${budget.toLocaleString("en-NG")}`}
+              {budget === 0 ? "Free" : `₦${budget.toLocaleString("en-NG")}`}
             </Text>
           </Text>
 
           {/* progress */}
-          {budget === 0 || budget === null ? null : (
+          {budget === 0 ? null : (
             <View style={styles.progressTrack}>
-              <Animated.View
+              <View
                 style={[styles.progressFill, { width: `${progress * 100}%` }]}
               />
             </View>
