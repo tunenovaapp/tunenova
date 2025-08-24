@@ -1,5 +1,6 @@
 import {
   useDiscoverCampaign,
+  useDisLikeCampaign,
   useExploreCampaigns,
   useLikeCampaign,
   useListenToCampaign,
@@ -78,6 +79,7 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   const { mutate: listenMutate } = useListenToCampaign();
   const { mutateAsync: likeMutate } = useLikeCampaign();
   const { mutate: discoverMutate } = useDiscoverCampaign();
+  const { mutateAsync: dislikeMutate } = useDisLikeCampaign();
 
   const campaign = useMemo(() => {
     return campaigns[currentIdx];
@@ -243,9 +245,18 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [campaign, likeMutate]);
 
-  const dislike = useCallback(() => {
-    next();
-  }, [next]);
+  const dislike = useCallback(async () => {
+    try {
+      await dislikeMutate({ id: campaign.id });
+      next();
+    } catch (e) {
+      if (Platform.OS === "android") {
+        ToastAndroid.show("Failed to like campaign", ToastAndroid.SHORT);
+      } else {
+        alert("Failed to like campaign");
+      }
+    }
+  }, [campaign.id]);
 
   // Refresh
   const isRefreshingRef = useRef(false);

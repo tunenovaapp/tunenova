@@ -392,6 +392,47 @@ export function useLikeCampaign(
   });
 }
 
+export interface disLikeBody {
+  /** Campaign ID (path param) */
+  id: string | number;
+}
+
+export interface disLikeData {
+  campaignId: number;
+  likedAt: string; // ISO timestamp
+}
+
+export interface disLikeResponse {
+  success: true;
+  message: string; // "Campaign liked successfully"
+  data: LikeData;
+}
+
+/* ────────── Network call ────────── */
+const disLikeRequest = async ({
+  id,
+}: disLikeBody): Promise<disLikeResponse> => {
+  const { data } = await api.post<disLikeResponse>(`/campaigns/${id}/dislike`);
+  return data;
+};
+
+/* ────────── Hook ────────── */
+export function useDisLikeCampaign(
+  options?: UseMutationOptions<disLikeResponse, AxiosError<ApiError>, LikeBody>
+) {
+  const qc = useQueryClient();
+
+  return useMutation<disLikeResponse, AxiosError<ApiError>, disLikeBody>({
+    mutationFn: disLikeRequest,
+    ...{
+      ...options,
+      onSuccess: (data, variables, context) => {
+        options?.onSuccess?.(data, variables, context);
+      },
+    },
+  });
+}
+
 export interface DiscoverBody {
   /** Campaign ID (path parameter) */
   id: string | number;
