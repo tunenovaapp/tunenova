@@ -134,7 +134,7 @@ export default function ProfileScreen({ navigation }: any) {
               setNotifEnabled(val);
               updateNotifications({
                 notificationsEnabled: val,
-                expoPushToken: expoPushToken,
+                expoPushToken: expoPushToken || "",
               });
             }}
             thumbColor={notifEnabled ? "#E10032" : "#888"}
@@ -218,7 +218,7 @@ export default function ProfileScreen({ navigation }: any) {
         onPress={() => {
           // Open mail app to send email to support@hallatechnologies.com
           Linking.openURL(
-            "mailto:support@hallatechnologies.com?subject=Support%20Request"
+            "mailto:support@tunenova.com?subject=Support%20Request"
           );
         }}
       >

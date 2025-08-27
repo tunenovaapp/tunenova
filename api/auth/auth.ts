@@ -154,8 +154,6 @@ export function useLogin(
       await setToken(res.token);
       await setRefreshToken(res.refreshToken);
 
-      console.log(res);
-
       return res;
     },
     ...options,
