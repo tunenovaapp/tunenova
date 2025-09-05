@@ -205,25 +205,16 @@ export default function WalletScreen({ navigation }: any) {
                     <Text style={styles.withdrawText}>Withdraw</Text>
                   </TouchableOpacity>
                   {/* Top Up Button (full width, below balance card) */}
-                  {!isBalanceLoading &&
-                  stats?.campaignsCreated !== null &&
-                  stats?.campaignsCreated !== undefined &&
-                  stats?.campaignsCreated > 0 ? (
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={[
-                        styles.withdrawBtn,
-                        { backgroundColor: "#0070BB" },
-                      ]}
-                      onPress={() => {
-                        router.push("/(others)/virtual-account-details");
-                      }}
-                    >
-                      <Text style={styles.withdrawText}>Top Up</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <></>
-                  )}
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={[styles.withdrawBtn, { backgroundColor: "#0070BB" }]}
+                    onPress={() => {
+                      router.push("/(others)/virtual-account-details");
+                    }}
+                  >
+                    <Text style={styles.withdrawText}>Top Up</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
