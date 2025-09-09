@@ -307,7 +307,7 @@ export default function CreatePaidCampaignScreen() {
                     ? [{ label: "Coupons (loading...)", value: "coupon" }]
                     : couponsData?.data && couponsData.data.length > 0
                     ? couponsData.data.map((coupon) => ({
-                        label: `Coupon (${coupon.value}) - ₦${Number(
+                        label: `Coupon - ₦${Number(
                           coupon.balance
                         ).toLocaleString("en-NG", {
                           minimumFractionDigits: 2,
