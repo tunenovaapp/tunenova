@@ -70,7 +70,7 @@ export default function CampaignsScreen() {
   /*  Campaign card component                                        */
   /* --------------------------------------------------------------- */
   const Card = ({ item, index }: { item: any; index: number }) => {
-    const budget = typeof item.budget === "number" ? item.budget : 0;
+    const budget = !isNaN(Number(item.budget)) ? Number(item.budget) : 0;
     const min = Math.floor(budget / 20);
     const max = min + 50;
 
