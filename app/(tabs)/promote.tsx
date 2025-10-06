@@ -58,7 +58,7 @@ const getValidationSchema = yup.lazy(() =>
       .array()
       .of(yup.string().defined())
       .min(1, "Select at least one audience type")
-      .required("Select at least one audience type"),
+      .required(),
     budget: yup
       .string()
       .optional()
@@ -148,11 +148,35 @@ export default function CreatePaidCampaignScreen() {
   }, [setValue]);
 
   /* --------------------------------------------------------------- */
+  /*  ESTIMATES (internal listeners -> public streams)               */
+  /* --------------------------------------------------------------- */
+  const formatNum = (n: number) =>
+    Number.isFinite(n) ? Number(n).toLocaleString("en-NG") : "0";
+
+  // INTERNAL ONLY: total listens estimate (kept out of UI)
+  // Preserve your previous approach but do NOT render it.
+  const rawBudget = Number(budgetValue || 0);
+  const estimatedListenersMin = Math.floor(rawBudget / 20);
+  const estimatedListenersMax = estimatedListenersMin + 50;
+
+  // PUBLIC: streams estimate = 10% – 60% of total listens
+  const estimatedStreamsMin = Math.floor(estimatedListenersMin * 0.1);
+  const estimatedStreamsMax = Math.floor(estimatedListenersMax * 0.6);
+
+  // Audience label for the note
+  const audienceValue =
+    Array.isArray(audience) && audience.length ? audience[0] : "";
+  const audienceLabelMap: Record<string, string> = {
+    spotify: "Spotify",
+    youtube: "YouTube",
+    "apple-music": "Apple Music",
+  };
+  const audienceLabel = audienceLabelMap[audienceValue] || "targeted audience";
+
+  /* --------------------------------------------------------------- */
   /*  Submit                                                         */
   /* --------------------------------------------------------------- */
   const onSubmit = (data: any) => {
-    // This function now only handles the mutation
-    // Determine couponId if paymentBy is a coupon
     let couponId: string | undefined = undefined;
     if (
       data.paymentBy &&
@@ -162,7 +186,7 @@ export default function CreatePaidCampaignScreen() {
       const coupon = couponsData?.data?.find((c) => c.value === data.paymentBy);
       if (coupon) couponId = coupon.id.toString();
     }
-    // Map form data to API payload
+
     const payload = {
       songTitle: data.songTitle,
       genre: data.genre,
@@ -177,9 +201,16 @@ export default function CreatePaidCampaignScreen() {
       budget: !isFreeCampaign && data.budget ? Number(data.budget) : undefined,
       paymentBy: data.paymentBy,
       ...(couponId ? { couponId } : {}),
+      // You can include the *internal* values if your backend needs them,
+      // but do NOT show them in the UI.
+      // internalEstimates: {
+      //   totalListenersMin: estimatedListenersMin,
+      //   totalListenersMax: estimatedListenersMax,
+      //   streamsMin: estimatedStreamsMin,
+      //   streamsMax: estimatedStreamsMax,
+      // },
     };
 
-    // Show uploading message
     setMessage("Uploading campaign... This may take a few moments.");
 
     mutate(payload, {
@@ -187,7 +218,6 @@ export default function CreatePaidCampaignScreen() {
         setMessage("Campaign created successfully!");
         setTimeout(async () => {
           if (res.data.virtualAccount?.accountNumber) {
-            console.log(res.data);
             router.replace({
               pathname: "/(others)/virtual-account-details",
               params: {
@@ -258,9 +288,7 @@ export default function CreatePaidCampaignScreen() {
 
   const handleTopUpPress = () => {
     setShowTopUpButton(false);
-    router.push({
-      pathname: "/(others)/virtual-account-details",
-    });
+    router.push({ pathname: "/(others)/virtual-account-details" });
   };
 
   const renderPaymentSheet = () => (
@@ -304,10 +332,15 @@ export default function CreatePaidCampaignScreen() {
                     value: "wallet",
                   },
                   ...(isCouponsLoading
-                    ? [{ label: "Coupons (loading...)", value: "coupon" }]
+                    ? [
+                        {
+                          label: "Campaign balance (loading...)",
+                          value: "coupon",
+                        },
+                      ]
                     : couponsData?.data && couponsData.data.length > 0
                     ? couponsData.data.map((coupon) => ({
-                        label: `Coupon - ₦${Number(
+                        label: `Campaign Balance - ₦${Number(
                           coupon.balance
                         ).toLocaleString("en-NG", {
                           minimumFractionDigits: 2,
@@ -499,6 +532,7 @@ export default function CreatePaidCampaignScreen() {
         {errors.snippet && (
           <Text style={styles.err}>{errors.snippet.message}</Text>
         )}
+
         {/* Target Audience field */}
         <FieldLabel label="Target Audience" />
         <Text style={styles.helper}>
@@ -523,6 +557,7 @@ export default function CreatePaidCampaignScreen() {
             />
           )}
         />
+
         {/* Always show budget field */}
         <FieldLabel label="Set Budget" />
         <Controller
@@ -538,36 +573,45 @@ export default function CreatePaidCampaignScreen() {
             />
           )}
         />
-        {/* Estimated Listeners */}
+
+        {/* Estimated Streams (display only; listeners kept internal) */}
         {!isFreeCampaign && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: 10,
-            }}
-          >
+          <View style={{ marginTop: 10 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Text style={{ fontFamily: "Nunito-Regular", color: "white" }}>
+                Estimated Streams:
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "Nunito-Bold",
+                  color: "white",
+                  fontSize: 18,
+                }}
+              >
+                {formatNum(estimatedStreamsMin)} -{" "}
+                {formatNum(estimatedStreamsMax)}
+              </Text>
+            </View>
             <Text
               style={{
+                color: "#9ca3af",
+                marginTop: 6,
                 fontFamily: "Nunito-Regular",
-                color: "white",
+                lineHeight: 18,
               }}
             >
-              Estimated Listeners:
-            </Text>
-            <Text
-              style={{
-                fontFamily: "Nunito-Bold",
-                color: "white",
-                fontSize: 18,
-              }}
-            >
-              {Math.floor(Number(watch("budget")) / 20)} -{" "}
-              {Math.floor(Number(watch("budget")) / 20) + 50}
+              This is the estimated number of {audienceLabel.toLowerCase()}{" "}
+              streams you will get for this campaign.
             </Text>
           </View>
         )}
+
         <TouchableOpacity
           style={[
             styles.payBtn,
@@ -593,7 +637,8 @@ export default function CreatePaidCampaignScreen() {
             </Text>
           )}
         </TouchableOpacity>
-        {message && !showTopUpButton ? ( // Only show non-top-up messages here
+
+        {message && !showTopUpButton ? (
           <View style={styles.messageRow}>
             {isSuccess ? (
               <Text style={styles.successIcon}>✔️</Text>
@@ -615,6 +660,7 @@ export default function CreatePaidCampaignScreen() {
           <></>
         )}
       </ScrollView>
+
       {!isFreeCampaign && renderPaymentSheet()}
     </KeyboardAvoidingView>
   );
@@ -798,7 +844,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginRight: 4,
   },
-  // Bottom sheet styles
   sheetContainer: {
     backgroundColor: "#18181b",
     borderTopLeftRadius: 20,

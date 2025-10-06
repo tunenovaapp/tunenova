@@ -47,8 +47,8 @@ export default function CampaignsScreen() {
       />
       <Text style={styles.emptyTitle}>No active campaigns</Text>
       <Text style={styles.emptySub}>
-        You &apos;t have any Campaigns yet. When{"\n"}you do, they will appear
-        here
+        You don&apos;t have any Campaigns yet.{"\n"}When you do, they will
+        appear here
       </Text>
     </View>
   );
@@ -69,16 +69,15 @@ export default function CampaignsScreen() {
   /* --------------------------------------------------------------- */
   /*  Campaign card component                                        */
   /* --------------------------------------------------------------- */
-  const Card = ({ item, index }: { item: any; index: number }) => {
+  const Card = ({ item }: { item: any; index: number }) => {
     const budget = !isNaN(Number(item.budget)) ? Number(item.budget) : 0;
     const min = Math.floor(budget / 20);
-    const max = min + 50;
+    const max = min + 50; // kept if you need it elsewhere
 
     const listens: number = Math.max(0, +item?.listens || 0);
 
-    // Progress normalized to [min, max]
-    const denom = Math.max(max - min, 1);
-    const progress = Math.max(0, Math.min((listens - min) / denom, 1));
+    // ✅ Progress against MIN target (clamped 0–1). Hidden when no budget or min==0.
+    const progress = min > 0 ? Math.min(listens / min, 1) : 0;
 
     return (
       <TouchableOpacity
@@ -145,23 +144,21 @@ export default function CampaignsScreen() {
             </Text>
           </Text>
 
-          {/* progress */}
-          {budget === 0 ? null : (
-            <View style={styles.progressTrack}>
-              <View
-                style={[styles.progressFill, { width: `${progress * 100}%` }]}
-              />
-            </View>
-          )}
+          {/* progress: listens vs MIN */}
+          {budget > 0 && min > 0 ? (
+            <>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[styles.progressFill, { width: `${progress * 100}%` }]}
+                />
+              </View>
 
-          <View style={styles.progressMeta}>
-            <Text style={styles.metaLeft}>{listens} Listeners</Text>
-            {budget > 0 ? (
-              <Text style={styles.metaRight}>
-                {min} - {max}
-              </Text>
-            ) : null}
-          </View>
+              <View style={styles.progressMeta}>
+                <Text style={styles.metaLeft}>{listens} Listens</Text>
+                {/* <Text style={styles.metaRight}>Min target: {min}</Text> */}
+              </View>
+            </>
+          ) : null}
         </View>
       </TouchableOpacity>
     );
@@ -199,7 +196,7 @@ export default function CampaignsScreen() {
       ) : hasData ? (
         <FlatList
           data={campaigns}
-          keyExtractor={(c) => c.id}
+          keyExtractor={(c: any) => String(c.id)}
           renderItem={Card}
           contentContainerStyle={{ paddingBottom: 50 }}
           ItemSeparatorComponent={() => <View style={{ height: 22 }} />}

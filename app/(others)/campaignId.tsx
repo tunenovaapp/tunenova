@@ -55,8 +55,20 @@ export default function CampaignAnalyticsScreen() {
   const { data: couponsData, isLoading: isCouponsLoading } = useCoupons();
 
   const campaign = data?.data;
+
+  // Existing metrics
   const listeners = campaign?.analytics?.listens ?? 0;
-  const fans = campaign?.analytics?.discoveries ?? 0;
+
+  // Rename "Fans" -> "Link Clicks": keep same source field you used before (discoveries)
+  const linkClicks = campaign?.analytics?.discoveries ?? 0;
+
+  // Estimated Streams = 10% – 60% of total link clicks (display as range)
+  const estStreamsMin =
+    Math.floor(linkClicks * 0.1) === 0 ? 1 : Math.floor(linkClicks * 0.1);
+  const estStreamsMax = Math.floor(linkClicks * 0.6);
+  const estStreamsRange = `${estStreamsMin.toLocaleString(
+    "en-NG"
+  )} – ${estStreamsMax.toLocaleString("en-NG")}`;
 
   const [isPromoteSheetVisible, setPromoteSheetVisible] = useState(false);
   const [promoteBudget, setPromoteBudget] = useState("");
@@ -119,19 +131,28 @@ export default function CampaignAnalyticsScreen() {
           Campaign Analytics
         </Text>
       </View>
+
       {/* -------------------- Metrics blocks ------------------------ */}
       <MetricBlock
         title="Total Listeners"
         description="No of people who listened to your song on Tunenova."
         value={listeners}
       />
+
       <MetricBlock
-        title="Total Fans"
-        description={`No of people who liked & discovered your song on ${
+        title="Total Link Clicks"
+        description={`No of link clicks to your song on ${
           platform ? platform : "the platform"
         }.`}
-        value={fans}
+        value={linkClicks}
       />
+
+      <MetricBlock
+        title="Estimated Streams"
+        description="Estimated number of streams."
+        value={estStreamsRange}
+      />
+
       {/* Paystack payment button if paid and pending */}
       {campaign?.isPaid && campaign?.status === "pending" && (
         <TouchableOpacity
@@ -163,6 +184,7 @@ export default function CampaignAnalyticsScreen() {
           </Text>
         </TouchableOpacity>
       )}
+
       {/* -------------------- CTA ---------------------------------- */}
       {data?.data.isPaid && data.data.paymentStatus === "pending" ? (
         <TouchableOpacity
@@ -347,7 +369,7 @@ function MetricBlock({
 }: {
   title: string;
   description: string;
-  value: number;
+  value: number | string; // allow range string like "80 – 480"
 }) {
   return (
     <View style={styles.metric}>
@@ -356,12 +378,10 @@ function MetricBlock({
         <Text style={styles.metricDesc}>{description}</Text>
       </View>
 
-      <Text style={styles.metricNumber}>{value}</Text>
+      <Text style={styles.metricNumber}>{String(value)}</Text>
     </View>
   );
 }
-
-/* ------------------- Tab helper ----------------------------------- */
 
 /* ------------------- Styles --------------------------------------- */
 const styles = StyleSheet.create({
@@ -407,6 +427,7 @@ const styles = StyleSheet.create({
     marginBottom: 110, // keeps above tab bar
   },
   ctaTxt: { color: "#fff", fontSize: 18, fontFamily: "Nunito-Medium" },
+
   // Bottom sheet styles
   sheetContainer: {
     backgroundColor: "#18181b",
