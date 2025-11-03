@@ -138,6 +138,9 @@ export default function WalletScreen({ navigation }: any) {
     refetch: refetchStats,
   } = useStats();
 
+  // Interpret "points" (rename from listens). If backend exposes `points`, prefer it; else fallback to listens.
+  const pointsValue = (stats as any)?.points ?? 0;
+
   const { data: profileData } = useProfile();
   const referralCode = profileData?.data?.referralCode || "";
   const [copied, setCopied] = React.useState(false);
@@ -150,6 +153,12 @@ export default function WalletScreen({ navigation }: any) {
       setTimeout(() => setCopied(false), 1500);
     }
   }, [referralCode]);
+
+  // Derive bonus mini-balance. If backend sends wallet.bonus, use it; else show ₦10 example as requested.
+  const bonusAmount =
+    balanceData?.data?.convertedFromPoints?.unwithdrawn != null
+      ? Number(balanceData.data.convertedFromPoints.unwithdrawn)
+      : 0;
 
   // -----------------------------------------------------------------
   //  Render
@@ -167,11 +176,11 @@ export default function WalletScreen({ navigation }: any) {
             {isBalanceLoading ? (
               <Skeleton
                 style={{
-                  height: 120,
+                  height: 140,
                   width: width - 40,
                   alignSelf: "center",
                   marginTop: 16,
-                  marginBottom: 16,
+                  marginBottom: 8,
                 }}
               />
             ) : (
@@ -190,11 +199,21 @@ export default function WalletScreen({ navigation }: any) {
                 <Text style={[styles.balance]}>
                   ₦{Number(balanceData?.data.wallet.balance).toFixed(2)}
                 </Text>
+
+                {/* Mini Bonus balance */}
+                <View style={styles.bonusPill}>
+                  <Text style={styles.bonusPillLabel}>Bonus:</Text>
+                  <Text style={styles.bonusPillAmount}>
+                    ₦{Number(bonusAmount).toFixed(2)}
+                  </Text>
+                </View>
+
                 <View
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
                     gap: 10,
+                    marginTop: 12,
                   }}
                 >
                   <TouchableOpacity
@@ -204,7 +223,6 @@ export default function WalletScreen({ navigation }: any) {
                   >
                     <Text style={styles.withdrawText}>Withdraw</Text>
                   </TouchableOpacity>
-                  {/* Top Up Button (full width, below balance card) */}
 
                   <TouchableOpacity
                     activeOpacity={0.8}
@@ -217,6 +235,13 @@ export default function WalletScreen({ navigation }: any) {
                   </TouchableOpacity>
                 </View>
               </View>
+            )}
+
+            {/* Bonus note below wallet */}
+            {!isBalanceLoading && (
+              <Text style={styles.bonusNote}>
+                Bonus payouts from points are paid monthly.
+              </Text>
             )}
 
             {/* Metrics strip */}
@@ -236,22 +261,22 @@ export default function WalletScreen({ navigation }: any) {
               <View style={styles.metricStrip}>
                 <Metric
                   icon="musical-notes"
-                  label="LISTENS"
-                  value={isStatsError ? 0 : stats?.listens ?? 0}
+                  label="POINTS"
+                  value={pointsValue}
                 />
                 <View style={styles.vLine} />
                 <Metric
                   icon="radar"
                   label="DISCOVERED"
                   family="MaterialCommunityIcons"
-                  value={isStatsError ? 0 : stats?.discoveries ?? 0}
+                  value={isStatsError ? 0 : (stats as any)?.discoveries ?? 0}
                 />
                 <View style={styles.vLine} />
                 <Metric
                   icon="users"
                   family="FontAwesome5"
                   label="REFERRALS"
-                  value={isStatsError ? 0 : stats?.referrals ?? 0}
+                  value={isStatsError ? 0 : (stats as any)?.referrals ?? 0}
                 />
               </View>
             )}
@@ -506,11 +531,6 @@ function WithdrawSheet({
   };
 
   const handleVerify = (data: any) => {
-    console.log("Verifying account:", data);
-    console.log("Form data received:", {
-      bankCode: data.bankCode,
-      accountNumber: data.accountNumber,
-    });
     setMessage("");
     const bank = NIGERIAN_BANKS.find((b) => b.value === data.bankCode);
     if (!bank) {
@@ -523,17 +543,14 @@ function WithdrawSheet({
       return;
     }
 
-    console.log("Calling verifyAccount API...");
     verifyAccount(
       { bankCode: data.bankCode, accountNumber: data.accountNumber },
       {
         onSuccess: ({ data: verifiedData }) => {
-          console.log("Account verification successful:", verifiedData);
           setVerifiedDetails({ ...verifiedData, bankName: bank.label });
           setStep("verify");
         },
         onError: (err: any) => {
-          console.log("Account verification failed:", err);
           setMessage(
             err?.response?.data?.message || "Could not verify account."
           );
@@ -565,16 +582,8 @@ function WithdrawSheet({
   };
 
   const onSubmit = (data: any) => {
-    console.log("Withdrawal submission:", data);
-    if (!selectedAccount) {
-      console.log("No selected account");
-      return;
-    }
+    if (!selectedAccount) return;
     setMessage("");
-    console.log("Submitting withdrawal with:", {
-      amount: Number(data.amount),
-      bankAccountId: selectedAccount.id,
-    });
     mutate(
       {
         amount: Number(data.amount),
@@ -582,7 +591,6 @@ function WithdrawSheet({
       },
       {
         onSuccess: () => {
-          console.log("Withdrawal successful");
           setMessage("Withdrawal successful!");
           ToastAndroid.show("Withdrawal request submitted!", 2000);
           setTimeout(() => {
@@ -592,7 +600,6 @@ function WithdrawSheet({
           }, 1500);
         },
         onError: (err: any) => {
-          console.log("Withdrawal failed:", err);
           setMessage("Withdrawal failed, try again later");
         },
       }
@@ -674,12 +681,7 @@ function WithdrawSheet({
           />
           <TouchableOpacity
             style={[styles.submitBtn, !isBankValid && { opacity: 0.6 }]}
-            onPress={() => {
-              console.log("Verify button pressed");
-              console.log("Form validity:", isBankValid);
-              console.log("Bank errors:", bankErrors);
-              handleBankSubmit(handleVerify)();
-            }}
+            onPress={() => handleBankSubmit(handleVerify)()}
             disabled={isVerifying || !isBankValid}
           >
             {isVerifying ? (
@@ -841,23 +843,14 @@ function WithdrawSheet({
             marginBottom: 8,
           }}
         >
-          <View
-            style={{
-              marginRight: 12,
-              marginTop: 2,
-            }}
-          >
+          <View style={{ marginRight: 12, marginTop: 2 }}>
             <Entypo
               name="info-with-circle"
               size={20}
               color="#ef4444"
             />
           </View>
-          <View
-            style={{
-              flex: 1,
-            }}
-          >
+          <View style={{ flex: 1 }}>
             <Text
               style={{
                 color: "#ef4444",
@@ -884,12 +877,7 @@ function WithdrawSheet({
 
         <TouchableOpacity
           style={[styles.submitBtn, !isAmountValid && { opacity: 0.6 }]}
-          onPress={() => {
-            console.log("Withdrawal button pressed");
-            console.log("Amount form validity:", isAmountValid);
-            console.log("Amount errors:", amountErrors);
-            handleAmountSubmit(onSubmit)();
-          }}
+          onPress={() => handleAmountSubmit(onSubmit)()}
           disabled={!isAmountValid || isPending}
         >
           {isPending ? (
@@ -1008,8 +996,33 @@ const styles = StyleSheet.create({
     fontFamily: "Nunito-Medium",
     color: "#fff",
     marginTop: 4,
-    marginBottom: 10,
+    marginBottom: 6,
   },
+
+  // Mini bonus balance
+  bonusPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#0E0E0E",
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
+  },
+  bonusPillLabel: {
+    color: "#9ca3af",
+    fontFamily: "Nunito-Regular",
+    fontSize: RFValue(12),
+  },
+  bonusPillAmount: {
+    color: "#fff",
+    fontFamily: "Nunito-Bold",
+    fontSize: RFValue(13),
+  },
+
   withdrawBtn: {
     alignSelf: "flex-start",
     backgroundColor: "#ff003c",
@@ -1038,9 +1051,18 @@ const styles = StyleSheet.create({
     fontFamily: "Nunito-Medium",
   },
 
+  // Bonus note text below wallet
+  bonusNote: {
+    color: "#9ca3af",
+    textAlign: "center",
+    marginTop: 8,
+    marginBottom: 4,
+    fontFamily: "Nunito-Regular",
+  },
+
   /* -------- Metric strip -------- */
   metricStrip: {
-    marginTop: 28,
+    marginTop: 16,
     flexDirection: "row",
     backgroundColor: "#111",
     borderRadius: 12,

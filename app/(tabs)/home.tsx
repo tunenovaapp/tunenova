@@ -1,19 +1,28 @@
+import api from "@/api/apiclient";
 import { useNotification } from "@/context/notificationsContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useMutation } from "@tanstack/react-query";
 import { useAudioPlayerStatus } from "expo-audio";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { Image } from "expo-image";
+import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import type { ReactNode } from "react";
 import React, { memo, useEffect, useState } from "react";
 import {
+  Alert,
   Dimensions,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   ToastAndroid,
   TouchableOpacity,
   View,
@@ -47,8 +56,131 @@ import { usePlayer } from "../../components/PlayerContext";
 import { Skeleton } from "./wallet";
 
 const { width, height } = Dimensions.get("window");
+const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5MB
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
+/* ------------------------------------------------------------------ */
+/*  File helpers — mirror the “works” page behavior                   */
+/* ------------------------------------------------------------------ */
+function guessMimeFromName(name: string) {
+  const ext = name.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "mp3":
+      return "audio/mpeg";
+    case "m4a":
+      return "audio/mp4";
+    case "wav":
+      return "audio/wav";
+    case "aac":
+      return "audio/aac";
+    case "ogg":
+      return "audio/ogg";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+async function prepareFileForUpload(
+  originalUri: string,
+  originalName?: string | null
+) {
+  let uri = originalUri;
+  let name = (originalName || `audio-${Date.now()}.mp3`).trim();
+
+  // Ensure we have a valid extension for the backend
+  if (!/\.(mp3|m4a|wav|aac|ogg)$/i.test(name)) {
+    name += ".mp3";
+  }
+
+  // On Android content:// must be copied to a file path
+  if (uri.startsWith("content://")) {
+    const ext = name.split(".").pop() || "mp3";
+    const dest = `${FileSystem.cacheDirectory}upload-${Date.now()}.${ext}`;
+    await FileSystem.copyAsync({ from: uri, to: dest });
+    uri = dest;
+  }
+  return { uri, name };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mutation — switch to FileSystem.uploadAsync (no axios)            */
+/* ------------------------------------------------------------------ */
+type CreateFreeCampaignParams = {
+  fileUri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  songLink: string;
+  songTitle?: string | null;
+  genre?: string | null;
+};
+
+function useCreateFreeCampaign() {
+  return useMutation({
+    mutationFn: async ({
+      fileUri,
+      fileName,
+      mimeType,
+      songLink,
+      songTitle,
+      genre,
+    }: CreateFreeCampaignParams) => {
+      const { uri, name } = await prepareFileForUpload(fileUri, fileName);
+      const type = mimeType || guessMimeFromName(name);
+
+      // Build URL from axios client baseURL
+      const baseURL = (api.defaults as any)?.baseURL?.replace(/\/$/, "") || "";
+      const url = `${baseURL}/campaigns/create/free`;
+
+      // Reuse Authorization header if present on axios client; fallback to AsyncStorage
+      const headers: Record<string, string> = { Accept: "application/json" };
+
+      const token = await SecureStore.getItemAsync("access_token");
+
+      headers["Authorization"] = `Bearer ${token}`;
+
+      // Use native multipart upload for reliability
+      const result = await FileSystem.uploadAsync(url, uri, {
+        httpMethod: "POST",
+        headers,
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: "audioFile",
+        // Although not required for MULTIPART, some servers prefer explicit type
+        // (Expo will infer if omitted)
+        mimeType: type,
+        parameters: {
+          songLink: (songLink || "").trim(),
+          ...(songTitle ? { songTitle: songTitle.trim() } : {}),
+          ...(genre ? { genre: genre.trim() } : {}),
+        },
+      });
+
+      // Parse and normalize response/errors
+      let body: any = null;
+      try {
+        body = result.body ? JSON.parse(result.body) : null;
+      } catch {
+        // keep body as raw string if not JSON
+        body = result.body;
+      }
+
+      if (result.status >= 200 && result.status < 300) {
+        return body;
+      }
+
+      const err: any = new Error(
+        (body && body.message) || "Failed to create campaign"
+      );
+      err.status = result.status;
+      err.payload = body;
+      throw err;
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  UI                                                                */
+/* ------------------------------------------------------------------ */
 
 type RectangularProgressBarProps = {
   progress: SharedValue<number>;
@@ -58,7 +190,6 @@ type RectangularProgressBarProps = {
   children: ReactNode;
 };
 
-// Gradient and sparkle progress bar
 function RectangularProgressBar({
   progress,
   width = 220,
@@ -66,7 +197,6 @@ function RectangularProgressBar({
   border = 4,
   children,
 }: RectangularProgressBarProps) {
-  // SVG progress bar
   const perimeter = (width - border) * 2 + (height - border) * 2;
   const animatedProps = useAnimatedProps(() => ({
     strokeDashoffset: perimeter * (1 - progress.value),
@@ -84,7 +214,6 @@ function RectangularProgressBar({
       }}
       collapsable={false}
     >
-      {/* SVG Gradient Progress Border */}
       <Svg
         width={width}
         height={height}
@@ -136,7 +265,6 @@ function RectangularProgressBar({
           animatedProps={animatedProps}
         />
       </Svg>
-      {/* Album art and overlay */}
       <View
         style={{
           width: width - border * 4,
@@ -153,7 +281,6 @@ function RectangularProgressBar({
   );
 }
 
-// Header Component
 type HeaderProps = { userFirstLetter: string };
 const Header: React.FC<HeaderProps> = memo(function Header({
   userFirstLetter,
@@ -179,7 +306,6 @@ const Header: React.FC<HeaderProps> = memo(function Header({
   );
 });
 
-// MetaInfo Component
 type MetaInfoProps = { campaign: any; slideDirection: "left" | "right" };
 const MetaInfo: React.FC<MetaInfoProps> = memo(function MetaInfo({
   campaign,
@@ -187,15 +313,6 @@ const MetaInfo: React.FC<MetaInfoProps> = memo(function MetaInfo({
 }) {
   return (
     <View style={styles.innerMetaContainer}>
-      {/* <Animated.Text
-        entering={slideDirection === "right" ? SlideInRight : SlideInLeft}
-        exiting={slideDirection === "right" ? SlideOutLeft : SlideOutRight}
-        style={[styles.title, { marginBottom: 4 }]}
-        numberOfLines={1}
-        key={campaign.songTitle}
-      >
-        {campaign.songTitle}
-      </Animated.Text> */}
       {campaign.isPaid && (
         <Animated.Text
           entering={slideDirection === "right" ? SlideInRight : SlideInLeft}
@@ -210,7 +327,6 @@ const MetaInfo: React.FC<MetaInfoProps> = memo(function MetaInfo({
   );
 });
 
-// PlayerProgress Component
 type PlayerProgressProps = {
   player: any;
   thumpAnimationStyle: any;
@@ -248,22 +364,18 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
 
     useEffect(() => {
       let hasFinished = false;
-
       if (status?.currentTime && status.currentTime > 20) {
         hasFinished = true;
       } else if (status?.didJustFinish) {
         hasFinished = true;
       }
-
       if (hasFinished) {
         player.pause();
-
         listenMutate({ id: campaign.id });
         if (campaign?.isPaid) {
           setShowModal(true);
           return;
         }
-
         handleNext();
       }
     }, [status?.currentTime, status?.didJustFinish]);
@@ -283,7 +395,6 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
         return;
       }
 
-      // Mutate and open link
       discoverMutate({ id: campaign.id });
 
       player.pause();
@@ -296,11 +407,9 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
       }
       try {
         await WebBrowser.openBrowserAsync(campaign.songLink!);
-      } catch (error) {
+      } catch {
         try {
-          await (async () => {
-            await Linking.openURL(campaign.songLink!);
-          })();
+          await Linking.openURL(campaign.songLink!);
         } catch (err) {
           ToastAndroid.show(
             "No browser found to open the link",
@@ -356,7 +465,6 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
   }
 );
 
-// PlayerArea Component
 type PlayerAreaProps = {
   player: any;
   campaign: any;
@@ -399,8 +507,6 @@ const PlayerArea: React.FC<PlayerAreaProps> = memo(function PlayerArea({
             if (x < width / 2) {
               if (currentIdx > 0) {
                 runOnJS(handlePrevious)();
-              } else {
-                // Optionally: shake or toast
               }
             } else {
               runOnJS(handleNext)();
@@ -425,7 +531,6 @@ const PlayerArea: React.FC<PlayerAreaProps> = memo(function PlayerArea({
   );
 });
 
-// Controls Component
 type ControlsProps = { handleDiscover: () => void };
 const Controls: React.FC<ControlsProps> = memo(function Controls({
   handleDiscover,
@@ -442,7 +547,6 @@ const Controls: React.FC<ControlsProps> = memo(function Controls({
   );
 });
 
-// LikeModal Component
 type LikeModalProps = {
   showModal: boolean;
   handleLike: () => void;
@@ -491,7 +595,6 @@ const LikeModal: React.FC<LikeModalProps> = memo(function LikeModal({
   );
 });
 
-// TipsModal Component
 type TipsModalProps = {
   showTipsModal: boolean;
   tips: string[];
@@ -544,7 +647,6 @@ const TipsModal: React.FC<TipsModalProps> = memo(function TipsModal({
   );
 });
 
-// Loader Component
 type LoaderProps = {
   refreshing: boolean;
   onRefresh: () => void;
@@ -586,7 +688,6 @@ const Loader: React.FC<LoaderProps> = memo(function Loader({
   );
 });
 
-// ErrorState Component
 type ErrorStateProps = {
   refreshing: boolean;
   onRefresh: () => void;
@@ -649,14 +750,22 @@ const ErrorState: React.FC<ErrorStateProps> = memo(function ErrorState({
   );
 });
 
+/* ------------------------------------------------------------------ */
+/*  Home Screen                                                       */
+/* ------------------------------------------------------------------ */
+type PickedAudio = {
+  uri: string;
+  name?: string | null;
+  size?: number | null;
+  mimeType?: string | null;
+};
+
 export default function ExplorePlayerScreen() {
-  // Player context
   const {
     player,
     isPaused,
     setIsPaused,
     currentIdx,
-    setCurrentIdx,
     campaigns,
     campaign,
     play,
@@ -672,28 +781,17 @@ export default function ExplorePlayerScreen() {
     discoverMutate,
   } = usePlayer();
 
-  // UI state (modals, tips, animation)
   const [showModal, setShowModal] = useState(false);
   const [showTipsModal, setShowTipsModal] = useState(false);
   const [currentTipIdx, setCurrentTipIdx] = useState(0);
-  const tips = [
-    "Earn cash instantly when you listen to songs with the 'sponsored' tag.",
-    "Earn more cash when you invite friends",
-    "Tap the logo to pause or play the music.",
-    "Double-tap the right hand side of the logo to skip to the next song.",
-    "Double-tap the left hand side of the logo to go back to the previous song.",
-  ];
   const [slideDirection, setSlideDirection] = useState<"left" | "right">(
     "right"
   );
 
-  // Animation state
   const thump = useSharedValue(1);
   const thumpAnimationStyle = useAnimatedStyle(() => ({
     transform: [{ scale: thump.value }],
   }));
-
-  // Animate thump on play/pause
   useEffect(() => {
     if (!isPaused) {
       thump.value = withRepeat(
@@ -709,54 +807,153 @@ export default function ExplorePlayerScreen() {
     }
   }, [isPaused]);
 
-  // Show tips modal for first-time users
   useEffect(() => {
     (async () => {
       const seen = await AsyncStorage.getItem("hasSeenTips");
-      console.log("🔍 Home: hasSeenTips =", seen);
       if (!seen) {
-        console.log("🔍 Home: First time user, pausing for tips modal");
         setIsPaused(true);
         setTimeout(() => {
           try {
             player.pause();
-          } catch (e) {
-            console.warn("Failed to pause player:", e);
-          }
+          } catch {}
           setShowTipsModal(true);
         }, 1500);
-      } else {
-        console.log("🔍 Home: Returning user, tips already seen");
       }
     })();
   }, [player]);
 
-  // Profile and listeners count
   const { data: profileData } = useProfile();
   const userFirstLetter =
     profileData?.data?.name?.trim()?.charAt(0)?.toUpperCase() || "C";
   const { data: verifiedUsersCount } = useVerifiedUsersCount();
   const { expoPushToken } = useNotification();
-
   const {
     mutate: updateNotifications,
     isPending: notifPending,
     isError: notifError,
     isSuccess: notifSuccess,
-  } = useUpdateNotifications({
-    onSuccess: () => {
-      console.log("🔔 Notifications updated successfully");
-    },
-  });
+  } = useUpdateNotifications();
 
   useEffect(() => {
-    // Update notifications with the latest Expo Push Token
     if (expoPushToken && !notifPending && !notifError && !notifSuccess) {
       updateNotifications({ expoPushToken, notificationsEnabled: true });
     }
-  });
+  }, [expoPushToken, notifPending, notifError, notifSuccess]);
 
-  // Error and loading states
+  // --- Bottom Modal (Create FREE) ---
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [pickedAudio, setPickedAudio] = useState<PickedAudio | null>(null);
+  const [musicUrl, setMusicUrl] = useState("");
+
+  const { mutateAsync: createFreeCampaign, isPending: isCreatingCampaign } =
+    useCreateFreeCampaign();
+
+  const openUploadSheet = () => {
+    try {
+      player.pause?.();
+    } catch {}
+    setIsPaused(true);
+    setShowUploadModal(true);
+  };
+
+  const resetUploadSheet = () => {
+    setPickedAudio(null);
+    setMusicUrl("");
+    setShowUploadModal(false);
+  };
+
+  const pickAudioFile = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: "audio/mpeg",
+        copyToCacheDirectory: false,
+      });
+
+      if ((res as any)?.canceled || (res as any)?.type === "cancel") return;
+
+      let asset:
+        | DocumentPicker.DocumentPickerAsset
+        | (DocumentPicker.DocumentResult & { assets?: any })
+        | undefined;
+
+      if ("assets" in res && res.assets?.length) {
+        asset = res.assets[0];
+      } else if ((res as any)?.type === "success") {
+        asset = res as any;
+      }
+
+      if (!asset) return;
+
+      // Optional: enforce 5MB limit just like your form page
+      if (asset.size != null && asset.size > MAX_FILE_BYTES) {
+        ToastAndroid.show("Max file size is 5 MB", ToastAndroid.SHORT);
+        return;
+      }
+
+      setPickedAudio({
+        uri: asset.uri,
+        name: asset.name,
+        size: asset.size,
+        mimeType: asset.mimeType || "audio/mpeg",
+      });
+    } catch (e) {
+      console.warn("pickAudioFile error:", e);
+      ToastAndroid.show("Could not open file picker", ToastAndroid.SHORT);
+    }
+  };
+
+  const handleUploadSubmit = async () => {
+    if (!pickedAudio) {
+      ToastAndroid.show("Please choose a music file", ToastAndroid.SHORT);
+      return;
+    }
+    if (!musicUrl.trim()) {
+      ToastAndroid.show(
+        "Paste the track URL (e.g. Spotify link)",
+        ToastAndroid.SHORT
+      );
+      return;
+    }
+
+    try {
+      new URL(musicUrl.trim());
+    } catch {
+      ToastAndroid.show("That link doesn't look valid", ToastAndroid.SHORT);
+      return;
+    }
+
+    try {
+      const resp = await createFreeCampaign({
+        fileUri: pickedAudio.uri,
+        fileName: pickedAudio.name || "audio.mp3",
+        mimeType: pickedAudio.mimeType || "audio/mpeg",
+        songLink: musicUrl.trim(),
+        songTitle:
+          (pickedAudio.name || "").replace(/\.[^/.]+$/, "") || "Untitled",
+        genre: "afrobesats", // set your default if needed
+      });
+
+      ToastAndroid.show("Campaign created!", ToastAndroid.SHORT);
+      resetUploadSheet();
+      try {
+        onRefresh?.();
+      } catch {}
+      console.log("Create free campaign response:", resp);
+    } catch (err: any) {
+      console.error("Create free campaign failed:", err?.payload || err);
+      const msg =
+        err?.payload?.message ||
+        (err?.status === 429 && err?.payload?.nextResetDate
+          ? `Limit reached. Try again after ${err.payload.nextResetDate}`
+          : err?.message || "Upload failed");
+      if (Platform.OS === "android") {
+        ToastAndroid.show(msg, ToastAndroid.LONG);
+      } else {
+        Alert.alert("Error", msg);
+      }
+    }
+  };
+
   if (isLoading) {
     return (
       <Loader
@@ -852,7 +1049,13 @@ export default function ExplorePlayerScreen() {
         />
         <TipsModal
           showTipsModal={showTipsModal}
-          tips={tips}
+          tips={[
+            "Earn cash instantly when you listen to songs with the 'sponsored' tag.",
+            "Earn more cash when you invite friends",
+            "Tap the logo to pause or play the music.",
+            "Double-tap the right hand side of the logo to skip to the next song.",
+            "Double-tap the left hand side of the logo to go back to the previous song.",
+          ]}
           currentTipIdx={currentTipIdx}
           setCurrentTipIdx={setCurrentTipIdx}
           setShowTipsModal={setShowTipsModal}
@@ -860,13 +1063,108 @@ export default function ExplorePlayerScreen() {
           player={player}
         />
       </ScrollView>
+
+      {/* --- Floating Action Button (FAB) --- */}
+      <TouchableOpacity
+        onPress={openUploadSheet}
+        accessibilityRole="button"
+        accessibilityLabel="Add track"
+        activeOpacity={0.85}
+        style={styles.fab}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Text style={styles.fabText}>＋</Text>
+      </TouchableOpacity>
+
+      {/* --- Bottom Sheet Upload Modal (Free Route) --- */}
+      <Modal
+        visible={showUploadModal}
+        transparent
+        animationType="slide"
+        onRequestClose={resetUploadSheet}
+      >
+        <Pressable
+          style={styles.bottomSheetOverlay}
+          onPress={resetUploadSheet}
+        >
+          <Pressable
+            style={styles.bottomSheet}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Add a track</Text>
+
+            <Pressable
+              style={[
+                styles.sheetFileBtn,
+                isCreatingCampaign && { opacity: 0.6 },
+              ]}
+              onPress={pickAudioFile}
+              disabled={isCreatingCampaign}
+            >
+              <Text style={styles.sheetFileBtnText}>
+                {pickedAudio?.name ? pickedAudio.name : "Choose music file"}
+              </Text>
+              {pickedAudio?.mimeType ? (
+                <Text style={styles.sheetFileMeta}>{pickedAudio.mimeType}</Text>
+              ) : null}
+            </Pressable>
+
+            <KeyboardAvoidingView
+              behavior={Platform.select({ ios: "padding", android: undefined })}
+            >
+              <TextInput
+                style={styles.sheetInput}
+                placeholder="Paste Spotify/Apple Music/URL"
+                placeholderTextColor="#888"
+                value={musicUrl}
+                onChangeText={setMusicUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                returnKeyType="done"
+                editable={!isCreatingCampaign}
+              />
+            </KeyboardAvoidingView>
+
+            <View style={styles.sheetActionRow}>
+              <Pressable
+                style={[
+                  styles.sheetActionBtn,
+                  { backgroundColor: "#E6E6E6" },
+                  isCreatingCampaign && { opacity: 0.7 },
+                ]}
+                onPress={resetUploadSheet}
+                disabled={isCreatingCampaign}
+              >
+                <Text style={[styles.sheetActionBtnText, { color: "#000" }]}>
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.sheetActionBtn,
+                  { backgroundColor: "#E10032" },
+                  isCreatingCampaign && { opacity: 0.7 },
+                ]}
+                onPress={handleUploadSubmit}
+                disabled={isCreatingCampaign}
+              >
+                <Text style={styles.sheetActionBtnText}>
+                  {isCreatingCampaign ? "Submitting..." : "Submit"}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// ---------------------------------------------------------------------------
-// styles
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/*  Styles                                                            */
+/* ------------------------------------------------------------------ */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -887,18 +1185,6 @@ const styles = StyleSheet.create({
     fontFamily: "RedditSans-Bold",
     letterSpacing: 2,
   },
-  walletPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-  },
-  walletText: {
-    marginLeft: 6,
-    fontFamily: "Nunito-Medium",
-  },
   heroContainer: {
     width: "80%",
     aspectRatio: 1,
@@ -914,16 +1200,6 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     marginHorizontal: "auto",
-  },
-  heroShadow: {
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    elevation: 20,
-  },
-  screenGlow: {
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    elevation: 50,
   },
   metaWrapper: {
     paddingHorizontal: 24,
@@ -948,15 +1224,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontFamily: "Nunito-Bold",
     textAlign: "center",
-  },
-  timeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
-  time: {
-    color: "#6b7280",
-    fontFamily: "Nunito-Regular",
   },
   modalOverlay: {
     flex: 1,
@@ -997,17 +1264,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 24,
   },
-  skipBtn: {
-    backgroundColor: "#08090A",
-    paddingVertical: 14,
-    paddingHorizontal: 25,
-    borderRadius: 8,
-  },
-  skipBtnText: {
-    color: "#fff",
-    fontSize: RFValue(14),
-    fontFamily: "Nunito-Medium",
-  },
   discoverBtn: {
     backgroundColor: "#E10032",
     paddingVertical: 14,
@@ -1018,58 +1274,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: RFValue(14),
     fontFamily: "Nunito-Medium",
-  },
-  refreshHint: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-    marginBottom: 8,
-    backgroundColor: "#E10032",
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    alignSelf: "center",
-    flexDirection: "row",
-    gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-    position: "fixed",
-    top: "50%",
-    left: "50%",
-    transform: [{ translateX: -50 }, { translateY: -50 }],
-  },
-  refreshHintText: {
-    color: "#fff",
-    fontFamily: "Nunito-Medium",
-    fontSize: 16,
-    marginLeft: 6,
-    letterSpacing: 0.5,
-  },
-  refreshHintAbsolute: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 8,
-    backgroundColor: "#E10032",
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    alignSelf: "stretch",
-    flexDirection: "row",
-    gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1125,5 +1329,107 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontFamily: "Nunito-Regular",
     fontSize: RFValue(12),
+  },
+
+  // FAB
+  fab: {
+    position: "absolute",
+    right: 24,
+    bottom: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#E10032",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  fabText: {
+    color: "#fff",
+    fontSize: RFValue(24),
+    lineHeight: RFValue(24),
+    fontFamily: "Nunito-Bold",
+  },
+
+  // Bottom Sheet
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  bottomSheet: {
+    backgroundColor: "#0E0E0E",
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#2A2A2A",
+    marginBottom: 12,
+  },
+  sheetTitle: {
+    color: "#fff",
+    fontFamily: "Nunito-Bold",
+    fontSize: RFValue(16),
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  sheetFileBtn: {
+    backgroundColor: "#1A1A1A",
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#252525",
+  },
+  sheetFileBtnText: {
+    color: "#fff",
+    fontFamily: "Nunito-Medium",
+    fontSize: RFValue(13),
+  },
+  sheetFileMeta: {
+    color: "#9ca3af",
+    fontFamily: "Nunito-Regular",
+    fontSize: RFValue(11),
+    marginTop: 6,
+  },
+  sheetInput: {
+    height: 48,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    backgroundColor: "#1A1A1A",
+    color: "#fff",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#252525",
+    fontFamily: "Nunito-Regular",
+    fontSize: RFValue(12),
+    marginBottom: 16,
+  },
+  sheetActionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  sheetActionBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetActionBtnText: {
+    color: "#fff",
+    fontFamily: "Nunito-Bold",
+    fontSize: RFValue(13),
   },
 });

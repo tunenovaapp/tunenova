@@ -129,6 +129,11 @@ export interface BalanceResponse {
   success: true;
   data: {
     wallet: Wallet;
+    convertedFromPoints: {
+      totalConverted: number;
+      totalWithdrawn: number;
+      unwithdrawn: number;
+    };
   };
 }
 
