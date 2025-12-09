@@ -1,7 +1,7 @@
 import api from "@/api/apiclient";
 import { useNotification } from "@/context/notificationsContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAudioPlayerStatus } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
@@ -9,7 +9,7 @@ import { Image } from "expo-image";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import type { ReactNode } from "react";
-import React, { memo, useEffect, useState } from "react";
+import React, { memo, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Dimensions,
@@ -198,8 +198,20 @@ function RectangularProgressBar({
   children,
 }: RectangularProgressBarProps) {
   const perimeter = (width - border) * 2 + (height - border) * 2;
+
+  // New: smoothed progress shared value
+  const smoothProgress = useSharedValue(0);
+
+  // Whenever "progress.value" changes, ease "smoothProgress" towards it
+  useDerivedValue(() => {
+    smoothProgress.value = withTiming(progress.value, {
+      duration: 300, // tweak (150–300) for feel
+      easing: Easing.out(Easing.cubic),
+    });
+  });
+
   const animatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: perimeter * (1 - progress.value),
+    strokeDashoffset: perimeter * (1 - smoothProgress.value),
   }));
 
   return (
@@ -242,6 +254,8 @@ function RectangularProgressBar({
             />
           </LinearGradient>
         </Defs>
+
+        {/* Static colored border */}
         <Rect
           x={border / 2}
           y={border / 2}
@@ -252,6 +266,8 @@ function RectangularProgressBar({
           strokeWidth={border}
           fill="none"
         />
+
+        {/* Animated white progress border */}
         <AnimatedRect
           x={border / 2}
           y={border / 2}
@@ -265,6 +281,7 @@ function RectangularProgressBar({
           animatedProps={animatedProps}
         />
       </Svg>
+
       <View
         style={{
           width: width - border * 4,
@@ -327,6 +344,16 @@ const MetaInfo: React.FC<MetaInfoProps> = memo(function MetaInfo({
   );
 });
 
+const DEFAULT_HERO = require("../../assets/images/Asset 2@4x-8.png");
+
+type Advert = {
+  id: number | string;
+  imageUrl: string;
+  createdAt: string;
+  endDate: string;
+  advertUrl: string;
+};
+
 type PlayerProgressProps = {
   player: any;
   thumpAnimationStyle: any;
@@ -334,12 +361,19 @@ type PlayerProgressProps = {
   onPlayPause: () => void;
   campaign: any;
   slideDirection: "left" | "right";
-  setShowModal: (v: boolean) => void;
-  discoverMutate: (data: { id: string }) => void;
-  setIsPaused: (v: boolean) => void;
+  setShowModal: (val: boolean) => void;
+  discoverMutate: (params: { id: string }) => void;
+  setIsPaused: (val: boolean) => void;
   handleNext: () => void;
-  listenMutate: (data: { id: string }) => void;
+  listenMutate: (params: { id: string }) => void;
 };
+
+const fetchAdverts = async (): Promise<Advert[]> => {
+  // TODO: replace with your actual endpoint
+  const res = await api.get<Advert[]>("/adverts/active");
+  return res.data?.data ?? [];
+};
+
 const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
   function PlayerProgress({
     player,
@@ -355,6 +389,7 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
     listenMutate,
   }) {
     const status = useAudioPlayerStatus(player);
+
     const progress = useDerivedValue(() => {
       if (status?.duration && status.duration > 0) {
         return (status.currentTime ?? 0) / status.duration;
@@ -362,6 +397,124 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
       return 0;
     }, [status]);
 
+    // ─────────────────────────────
+    // Adverts: fetch with useQuery
+    // ─────────────────────────────
+    const { data: adverts = [] } = useQuery<Advert[]>({
+      queryKey: ["adverts"],
+      queryFn: fetchAdverts,
+      staleTime: 1000 * 60 * 5,
+    });
+
+    /**
+     * currentSlot:
+     *  -1 => default hero asset
+     *  0..adverts.length-1 => adverts[index]
+     */
+    const [currentSlot, setCurrentSlot] = useState<number>(-1);
+
+    // Reanimated shared values for cross-fade + scale
+    const opacity = useSharedValue(1);
+    const scale = useSharedValue(1);
+
+    // Rotate images over time (no runOnJS, no functional updater)
+    // Rotate images over time (no runOnJS, no functional updater)
+    useEffect(() => {
+      if (isPaused) {
+        opacity.value = withTiming(1, { duration: 200 });
+        scale.value = withTiming(1, { duration: 200 });
+        return;
+      }
+
+      if (!adverts.length) {
+        setCurrentSlot(-1);
+        opacity.value = withTiming(1, { duration: 200 });
+        scale.value = withTiming(1, { duration: 200 });
+        return;
+      }
+
+      const baseSeconds = 6;
+      const fadeDuration = 300;
+
+      let innerTimeoutId: ReturnType<typeof setTimeout>;
+
+      const timeoutId = setTimeout(() => {
+        // fade out
+        opacity.value = withTiming(0, { duration: fadeDuration });
+
+        innerTimeoutId = setTimeout(() => {
+          const totalSlots = adverts.length + 1; // + default asset
+
+          // Map -1..(n-1) to 0..n, advance by 1, then map back
+          const nextSlotIndex = (currentSlot + 2 + totalSlots) % totalSlots;
+          const newSlot = nextSlotIndex - 1; // 0 -> -1, 1.. -> 0..
+
+          setCurrentSlot(newSlot);
+
+          // pop + fade in
+          scale.value = 0.96;
+          opacity.value = withTiming(1, { duration: fadeDuration });
+          scale.value = withTiming(1, { duration: 400 });
+        }, fadeDuration);
+      }, baseSeconds * 1000);
+
+      return () => {
+        clearTimeout(timeoutId);
+        clearTimeout(innerTimeoutId);
+      };
+    }, [adverts.length, currentSlot, isPaused]);
+
+    // Compute which image to show
+    const currentImageSource = useMemo(() => {
+      if (
+        !adverts.length ||
+        currentSlot === -1 ||
+        typeof currentSlot !== "number"
+      ) {
+        return DEFAULT_HERO;
+      }
+
+      const safeIndex =
+        ((currentSlot % adverts.length) + adverts.length) % adverts.length;
+
+      const ad = adverts[safeIndex];
+
+      if (!ad?.imageUrl) {
+        return DEFAULT_HERO;
+      }
+
+      return { uri: ad.imageUrl };
+    }, [adverts, currentSlot]);
+
+    const currentAdvertUrl = useMemo(() => {
+      if (
+        !adverts.length ||
+        currentSlot === -1 ||
+        typeof currentSlot !== "number"
+      ) {
+        return null;
+      }
+
+      const safeIndex =
+        ((currentSlot % adverts.length) + adverts.length) % adverts.length;
+
+      const ad = adverts[safeIndex];
+
+      if (!ad?.advertUrl) {
+        return null;
+      }
+
+      return { uri: ad.advertUrl };
+    }, [adverts, currentSlot]);
+
+    const advertAnimationStyle = useAnimatedStyle(() => ({
+      opacity: opacity.value,
+      transform: [{ scale: scale.value }],
+    }));
+
+    // ─────────────────────────────
+    // Existing audio finish logic
+    // ─────────────────────────────
     useEffect(() => {
       let hasFinished = false;
       if (status?.currentTime && status.currentTime > 20) {
@@ -380,6 +533,9 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
       }
     }, [status?.currentTime, status?.didJustFinish]);
 
+    // ─────────────────────────────
+    // Discover handler (unchanged)
+    // ─────────────────────────────
     const handleDiscover = async () => {
       const currentTime = status?.currentTime ?? 0;
       const duration = status?.duration ?? 0;
@@ -420,6 +576,9 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
       }
     };
 
+    // ─────────────────────────────
+    // Render
+    // ─────────────────────────────
     return (
       <>
         <RectangularProgressBar
@@ -429,22 +588,44 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
           border={5}
         >
           <Pressable
-            style={styles.pressableHero}
-            onPress={onPlayPause}
-          >
-            <Animated.Image
-              source={
-                campaign.artworkUrl
-                  ? { uri: campaign.artworkUrl }
-                  : require("../../assets/images/Asset 2@4x-8.png")
+            style={
+              currentImageSource === DEFAULT_HERO
+                ? styles.pressableHero
+                : { flex: 1 }
+            }
+            onPress={() => {
+              onPlayPause();
+              if (currentAdvertUrl !== null) {
+                Linking.openURL(currentAdvertUrl.uri);
               }
-              style={[
-                styles.hero,
-                thumpAnimationStyle,
-                isPaused && { opacity: 0.5 },
-              ]}
-              resizeMode="contain"
-            />
+            }}
+          >
+            <View
+              style={
+                currentImageSource === DEFAULT_HERO
+                  ? styles.heroContainer
+                  : {
+                      flex: 1,
+                      justifyContent: "center",
+                      alignItems: "center",
+                      borderRadius: 16,
+                    }
+              }
+            >
+              <Animated.Image
+                source={currentImageSource}
+                style={[
+                  currentImageSource === DEFAULT_HERO
+                    ? styles.hero
+                    : { width: 320, height: 320, borderRadius: 16 },
+                  thumpAnimationStyle,
+                  advertAnimationStyle,
+                  isPaused && { opacity: 0.5 },
+                ]}
+                resizeMode="contain"
+              />
+            </View>
+
             {isPaused && (
               <View
                 style={styles.heroOverlay}
@@ -454,11 +635,13 @@ const PlayerProgress: React.FC<PlayerProgressProps> = React.memo(
               </View>
             )}
           </Pressable>
+
           <MetaInfo
             campaign={campaign}
             slideDirection={slideDirection}
           />
         </RectangularProgressBar>
+
         <Controls handleDiscover={handleDiscover} />
       </>
     );
