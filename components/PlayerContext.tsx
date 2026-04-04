@@ -235,29 +235,31 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
       if (!campaign) return;
       await likeMutate({ id: campaign?.id });
       await Linking.openURL(campaign.songLink!);
-      next();
+      await next();
     } catch (e) {
       if (Platform.OS === "android") {
-        ToastAndroid.show("Failed to like campaign", ToastAndroid.SHORT);
+        ToastAndroid.show("Failed to dislike campaign", ToastAndroid.SHORT);
       } else {
-        alert("Failed to like campaign");
+        alert("Failed to dislike campaign");
       }
+      throw e;
     }
-  }, [campaign, likeMutate]);
+  }, [campaign, likeMutate, next]);
 
   const dislike = useCallback(async () => {
     if (!campaign) return;
     try {
       await dislikeMutate({ id: campaign?.id });
-      next();
+      await next();
     } catch (e) {
       if (Platform.OS === "android") {
         ToastAndroid.show("Failed to like campaign", ToastAndroid.SHORT);
       } else {
         alert("Failed to like campaign");
       }
+      throw e;
     }
-  }, [campaign]);
+  }, [campaign, dislikeMutate, next]);
 
   // Refresh
   const isRefreshingRef = useRef(false);

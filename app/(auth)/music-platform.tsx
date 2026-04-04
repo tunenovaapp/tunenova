@@ -1,5 +1,6 @@
 import { useProfile } from "@/api/auth/auth";
 import { useUpdatePlatforms } from "@/api/user/user";
+import { RFValue } from "@/utils/responsiveFont";
 import {
   Entypo,
   FontAwesome5,
@@ -19,7 +20,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const { width } = Dimensions.get("window");
@@ -189,13 +189,11 @@ export default function MusicPlatformScreen() {
         const platform = p as PlatformId;
         try {
           if (RNPlatform.OS === "android") {
-            // TODO: react-native-device-info's `hasAppInstalled` seems to have been removed or changed.
-            // This logic needs to be re-verified.
+            // TODO: Add an Android-specific installed-app check if this auto-detect
+            // flow needs to work on Android too.
             // const pkg = PLATFORM_APP_IDS[platform].android;
-            // if (DeviceInfo.isAppInstalled) {
-            //   const isInstalled = await DeviceInfo.isAppInstalled(pkg);
-            //   if (isInstalled) found.push(platform);
-            // }
+            // const isInstalled = await someAndroidCheck(pkg);
+            // if (isInstalled) found.push(platform);
           } else if (RNPlatform.OS === "ios") {
             const url = PLATFORM_APP_IDS[platform].ios;
             const canOpen = await Linking.canOpenURL(url);

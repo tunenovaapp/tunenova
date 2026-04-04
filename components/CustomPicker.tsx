@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { RFValue } from "@/utils/responsiveFont";
 import React, { useState } from "react";
 import {
   FlatList,
@@ -8,7 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { RFValue } from "react-native-responsive-fontsize";
 
 type PickerOption = {
   label: string;

@@ -178,8 +178,10 @@ export function useUpdateNotifications(
                 ...old,
                 data: {
                   ...old.data,
-                  notificationsEnabled: data.notificationsEnabled,
-                  expoPushToken: data.expoPushToken,
+                  notificationsEnabled:
+                    data.notificationsEnabled ?? old.data.notificationsEnabled,
+                  expoPushToken:
+                    data.expoPushToken ?? old.data.expoPushToken ?? null,
                 },
               }
             : old
@@ -230,6 +232,8 @@ export interface UserProfile {
   referredCode: string | null;
   selectedGenres: string[] | null;
   selectedPlatforms: string[] | null;
+  expoPushToken?: string | null;
+  notificationsEnabled: boolean;
 }
 
 /* ───────────── Fetcher ───────────── */

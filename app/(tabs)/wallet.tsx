@@ -1,1309 +1,391 @@
 import { useProfile } from "@/api/auth/auth";
 import { useStats } from "@/api/user/user";
+import { Transaction, useBalance, useTransactions } from "@/api/wallet/wallet";
+import { WalletBalanceHero } from "@/components/wallet/wallet-balance-hero";
+import { WalletReferralCard } from "@/components/wallet/wallet-referral-card";
+import { WalletSkeleton } from "@/components/wallet/wallet-skeleton";
 import {
-  useAddBankAccount,
-  useBalance,
-  useBankAccounts,
-  useVerifyAccount,
-  useWithdraw,
-  useWithdrawalTransactions,
-} from "@/api/wallet/wallet";
-import {
-  Entypo,
-  FontAwesome5,
-  Ionicons,
-  MaterialCommunityIcons,
-} from "@expo/vector-icons";
-import { yupResolver } from "@hookform/resolvers/yup";
+  WalletMetric,
+  WalletStatsGrid,
+} from "@/components/wallet/wallet-stats-grid";
+import { WalletTransactionRow } from "@/components/wallet/wallet-transaction-row";
+import { WithdrawSheet } from "@/components/wallet/withdraw-sheet";
+import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import { Image } from "expo-image";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Dimensions,
   FlatList,
-  Animated as RNAnimated,
+  Platform,
+  Pressable,
+  RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   ToastAndroid,
-  TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
-import Modal from "react-native-modal";
-import Animated, {
-  FadeInUp,
-  useSharedValue,
-  withDelay,
-  withTiming,
-} from "react-native-reanimated";
-import { RFValue } from "react-native-responsive-fontsize";
-import { SafeAreaView } from "react-native-safe-area-context";
-import * as yup from "yup";
-import CustomPicker from "../../components/CustomPicker";
+import Animated, { FadeInUp } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width } = Dimensions.get("window");
+type SkeletonItem = {
+  id: string;
+  __skeleton: true;
+};
 
-// Simple skeleton shimmer component
-function Skeleton({ style }: { style?: any }) {
-  const shimmerAnim = React.useRef(new RNAnimated.Value(0)).current;
+const formatCurrency = (amount: number) =>
+  `\u20A6${Number(amount).toLocaleString("en-NG", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
-  React.useEffect(() => {
-    RNAnimated.loop(
-      RNAnimated.timing(shimmerAnim, {
-        toValue: 1,
-        duration: 1200,
-        useNativeDriver: true,
-      })
-    ).start();
-  }, [shimmerAnim]);
+const formatNumber = (value: number) => Number(value).toLocaleString("en-NG");
 
-  const translateX = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-100, 300], // Adjust for width of skeleton
-  });
+const isSkeletonItem = (
+  item: Transaction | SkeletonItem,
+): item is SkeletonItem => "__skeleton" in item;
 
-  return (
-    <RNAnimated.View
-      style={[
-        { backgroundColor: "#222", borderRadius: 8, overflow: "hidden" },
-        style,
-      ]}
-    >
-      <RNAnimated.View
-        style={[
-          {
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 100,
-            backgroundColor: "#333",
-            opacity: 0.3,
-            transform: [{ translateX }],
-            borderRadius: 8,
-          },
-        ]}
-      />
-    </RNAnimated.View>
-  );
-}
-
-// -------------------------------------------------------------------
-//  WalletScreen
-// -------------------------------------------------------------------
-export { Skeleton };
-export default function WalletScreen({ navigation }: any) {
-  // Reanimated value makes the balance slide/scale in
-  const cardAnim = useSharedValue(0);
+export default function WalletScreen() {
+  const { top, bottom } = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 390;
   const [isSheetVisible, setSheetVisible] = useState(false);
-
-  useEffect(() => {
-    cardAnim.value = withDelay(150, withTiming(1, { duration: 450 }));
-  }, []);
+  const [copied, setCopied] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const {
     data: balanceData,
     isLoading: isBalanceLoading,
     isError: isBalanceError,
+    refetch: refetchBalance,
   } = useBalance();
-  // Optional "count-up" animation for the balance text
-  const balanceSv = useSharedValue(0);
-  useEffect(() => {
-    let target = 0;
-    if (
-      !isBalanceLoading &&
-      !isBalanceError &&
-      balanceData?.data.wallet.balance != null
-    ) {
-      target = balanceData.data.wallet.balance;
-    }
-    balanceSv.value = withDelay(300, withTiming(target, { duration: 800 }));
-  }, [isBalanceLoading, isBalanceError, balanceData]);
-
-  // Fetch withdrawal transactions
-  const { data, isLoading, isError, refetch } = useWithdrawalTransactions({
-    page: 1,
-    limit: 20,
-  });
-  const txHistory = data?.data.transactions || [];
-
   const {
     data: stats,
     isLoading: isStatsLoading,
     isError: isStatsError,
     refetch: refetchStats,
   } = useStats();
+  const {
+    data: profileData,
+    isLoading: isProfileLoading,
+    refetch: refetchProfile,
+  } = useProfile();
+  const {
+    data: transactionsData,
+    isLoading: isTransactionsLoading,
+    isError: isTransactionsError,
+    refetch: refetchTransactions,
+  } = useTransactions({
+    page: 1,
+    limit: 20,
+  });
 
-  // Interpret "points" (rename from listens). If backend exposes `points`, prefer it; else fallback to listens.
-  const pointsValue = (stats as any)?.points ?? 0;
-
-  const { data: profileData } = useProfile();
+  const wallet = balanceData?.data?.wallet;
+  const convertedFromPoints = balanceData?.data?.convertedFromPoints;
   const referralCode = profileData?.data?.referralCode || "";
-  const [copied, setCopied] = React.useState(false);
+  const history = useMemo(
+    () => transactionsData?.data?.transactions ?? [],
+    [transactionsData?.data?.transactions],
+  );
 
-  const handleCopyReferral = React.useCallback(() => {
-    if (referralCode) {
-      Clipboard.setStringAsync(referralCode);
-      setCopied(true);
-      ToastAndroid.show("Referral code copied", 1500);
-      setTimeout(() => setCopied(false), 1500);
+  const metrics = useMemo<WalletMetric[]>(
+    () => [
+      {
+        icon: "sparkles-outline",
+        label: "Points",
+        value: formatNumber(stats?.listens ?? 0),
+        accent: "#1E293B",
+      },
+      {
+        icon: "compass-outline",
+        label: "Discoveries",
+        value: formatNumber(stats?.discoveries ?? 0),
+        accent: "#132238",
+      },
+      {
+        icon: "people-outline",
+        label: "Referrals",
+        value: formatNumber(stats?.referrals ?? 0),
+        accent: "#1F0E16",
+      },
+      {
+        icon: "cash-outline",
+        label: "Converted",
+        value: formatCurrency(convertedFromPoints?.totalConverted ?? 0),
+        accent: "#1F1A0D",
+      },
+    ],
+    [
+      convertedFromPoints?.totalConverted,
+      stats?.discoveries,
+      stats?.listens,
+      stats?.referrals,
+    ],
+  );
+
+  const listData = useMemo<(Transaction | SkeletonItem)[]>(() => {
+    if (isTransactionsLoading && !history.length) {
+      return Array.from({ length: 4 }, (_, index) => ({
+        id: `wallet-skeleton-${index}`,
+        __skeleton: true as const,
+      }));
     }
+
+    return history;
+  }, [history, isTransactionsLoading]);
+
+  const handleCopyReferral = useCallback(async () => {
+    if (!referralCode) {
+      return;
+    }
+
+    await Clipboard.setStringAsync(referralCode);
+    setCopied(true);
+
+    if (Platform.OS === "android") {
+      ToastAndroid.show("Referral code copied", ToastAndroid.SHORT);
+    }
+
+    setTimeout(() => setCopied(false), 1400);
   }, [referralCode]);
 
-  // Derive bonus mini-balance. If backend sends wallet.bonus, use it; else show ₦10 example as requested.
-  const bonusAmount =
-    balanceData?.data?.convertedFromPoints?.unwithdrawn != null
-      ? Number(balanceData.data.convertedFromPoints.unwithdrawn)
-      : 0;
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.allSettled([
+      refetchBalance(),
+      refetchStats(),
+      refetchTransactions(),
+      refetchProfile(),
+    ]);
+    setRefreshing(false);
+  }, [refetchBalance, refetchProfile, refetchStats, refetchTransactions]);
 
-  // -----------------------------------------------------------------
-  //  Render
-  // -----------------------------------------------------------------
+  const renderHeader = () => (
+    <View style={[styles.header, { paddingTop: 15 }]}>
+      <WalletBalanceHero
+        balance={wallet?.balance ?? 0}
+        bonusAmount={convertedFromPoints?.unwithdrawn ?? 0}
+        totalEarned={wallet?.totalEarned ?? 0}
+        totalWithdrawn={wallet?.totalWithdrawn ?? 0}
+        isLoading={isBalanceLoading}
+        compact={isCompact}
+        onWithdraw={() => setSheetVisible(true)}
+        onTopUp={() => router.push("/(others)/virtual-account-details")}
+      />
+
+      <WalletStatsGrid
+        metrics={metrics}
+        isLoading={isStatsLoading}
+      />
+
+      <WalletReferralCard
+        referralCode={referralCode}
+        copied={copied}
+        isLoading={isProfileLoading}
+        onCopy={handleCopyReferral}
+      />
+
+      {isBalanceError || isStatsError || isTransactionsError ? (
+        <View style={styles.noticeCard}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color="#FCA5A5"
+          />
+          <Text style={styles.noticeText}>
+            Some wallet data could not be refreshed fully. Pull down to try
+            again.
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.historyHeader}>
+        <View style={styles.historyCopy}>
+          <Text style={styles.historyTitle}>Recent activity</Text>
+          <Text style={styles.historySubtitle}>
+            Latest 20 wallet transactions across deposits, bonuses, and
+            withdrawals.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderEmptyState = () => {
+    if (isTransactionsLoading) {
+      return null;
+    }
+
+    return (
+      <View style={styles.emptyState}>
+        <View style={styles.emptyIconWrap}>
+          <Ionicons
+            name="receipt-outline"
+            size={24}
+            color="#FFFFFF"
+          />
+        </View>
+        <Text style={styles.emptyTitle}>
+          {isTransactionsError
+            ? "Could not load activity"
+            : "No wallet activity yet"}
+        </Text>
+        <Text style={styles.emptyText}>
+          {isTransactionsError
+            ? "Your wallet history is temporarily unavailable. Refresh and try again."
+            : "Deposits, withdrawals, bonuses, and other wallet events will show up here."}
+        </Text>
+        <Pressable
+          onPress={handleRefresh}
+          style={({ pressed }) => [
+            styles.retryButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.retryButtonText}>
+            {isTransactionsError ? "Retry loading" : "Refresh wallet"}
+          </Text>
+        </Pressable>
+      </View>
+    );
+  };
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.screen}>
       <StatusBar barStyle="light-content" />
       <FlatList
-        data={isLoading ? Array(3).fill({}) : txHistory}
-        contentContainerStyle={{ paddingBottom: 160 }}
-        keyExtractor={(item, idx) => item.id || `skeleton-${idx}`}
-        ListHeaderComponent={
-          <>
-            {/* Balance Card */}
-            {isBalanceLoading ? (
-              <Skeleton
-                style={{
-                  height: 140,
-                  width: width - 40,
-                  alignSelf: "center",
-                  marginTop: 16,
-                  marginBottom: 8,
-                }}
-              />
-            ) : (
-              <View style={[styles.balanceCard]}>
-                <Image
-                  source={require("../../assets/images/Frame 33540.png")}
-                  style={{
-                    height: 72,
-                    width: 72,
-                    position: "absolute",
-                    top: 0,
-                    right: 0,
-                  }}
-                />
-                <Text style={styles.balanceLabel}>Total balance</Text>
-                <Text style={[styles.balance]}>
-                  ₦{Number(balanceData?.data.wallet.balance).toFixed(2)}
-                </Text>
-
-                {/* Mini Bonus balance */}
-                <View style={styles.bonusPill}>
-                  <Text style={styles.bonusPillLabel}>Bonus:</Text>
-                  <Text style={styles.bonusPillAmount}>
-                    ₦{Number(bonusAmount).toFixed(2)}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                    marginTop: 12,
-                  }}
-                >
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={styles.withdrawBtn}
-                    onPress={() => setSheetVisible(true)}
-                  >
-                    <Text style={styles.withdrawText}>Withdraw</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[styles.withdrawBtn, { backgroundColor: "#0070BB" }]}
-                    onPress={() => {
-                      router.push("/(others)/virtual-account-details");
-                    }}
-                  >
-                    <Text style={styles.withdrawText}>Top Up</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Bonus note below wallet */}
-            {!isBalanceLoading && (
-              <Text style={styles.bonusNote}>
-                Bonus payouts from points are paid monthly.
-              </Text>
-            )}
-
-            {/* Metrics strip */}
-            {isStatsLoading ? (
-              <View style={[styles.metricStrip, { flexDirection: "row" }]}>
-                <Skeleton
-                  style={{ flex: 1, height: 48, marginHorizontal: 8 }}
-                />
-                <Skeleton
-                  style={{ flex: 1, height: 48, marginHorizontal: 8 }}
-                />
-                <Skeleton
-                  style={{ flex: 1, height: 48, marginHorizontal: 8 }}
-                />
-              </View>
-            ) : (
-              <View style={styles.metricStrip}>
-                <Metric
-                  icon="musical-notes"
-                  label="POINTS"
-                  value={pointsValue}
-                />
-                <View style={styles.vLine} />
-                <Metric
-                  icon="radar"
-                  label="DISCOVERED"
-                  family="MaterialCommunityIcons"
-                  value={isStatsError ? 0 : (stats as any)?.discoveries ?? 0}
-                />
-                <View style={styles.vLine} />
-                <Metric
-                  icon="users"
-                  family="FontAwesome5"
-                  label="REFERRALS"
-                  value={isStatsError ? 0 : (stats as any)?.referrals ?? 0}
-                />
-              </View>
-            )}
-
-            {/* Invite friends card */}
-            {isLoading ? (
-              <Skeleton
-                style={{
-                  height: 70,
-                  marginHorizontal: 12,
-                  borderRadius: 14,
-                  marginVertical: 24,
-                }}
-              />
-            ) : (
-              <View style={styles.inviteCard}>
-                <Text style={styles.inviteText}>
-                  Invite your friends &amp; earn{"\n"}cash when they join.
-                </Text>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={styles.inviteBtn}
-                  onPress={handleCopyReferral}
-                >
-                  <Text style={styles.inviteBtnTxt}>
-                    {copied ? "Copied!" : "Invite friends"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Transaction history heading */}
-            <Text style={styles.txHeading}>Transaction History</Text>
-          </>
-        }
+        data={listData}
+        keyExtractor={(item) => item.id}
         renderItem={({ item, index }) =>
-          isLoading ? (
-            <Skeleton
-              style={{
-                height: 60,
-                marginHorizontal: 16,
-                marginBottom: 12,
-                borderRadius: 8,
-              }}
-            />
+          isSkeletonItem(item) ? (
+            <WalletSkeleton style={styles.rowSkeleton} />
           ) : (
-            <Animated.View
-              entering={FadeInUp.delay(70 * index)}
-              style={styles.txRow}
-            >
-              <Text style={styles.txType}>{item.type}</Text>
-              <Text style={styles.txAmount}>
-                ₦{item.amount.toLocaleString("en-NG")}
-              </Text>
-              <Text
-                style={[
-                  styles.txStatus,
-                  item.status === "completed"
-                    ? { color: "#377D22" }
-                    : item.status === "pending"
-                    ? { color: "#F09B59" }
-                    : { color: "#EB3324" },
-                ]}
-              >
-                {item.status === "completed"
-                  ? "Successful"
-                  : item.status === "pending"
-                  ? "Pending"
-                  : "Failed"}
-              </Text>
+            <Animated.View entering={FadeInUp.delay(Math.min(index * 45, 240))}>
+              <WalletTransactionRow transaction={item} />
             </Animated.View>
           )
         }
-        ItemSeparatorComponent={() => <View style={styles.txSeparator} />}
-        ListEmptyComponent={
-          !isLoading ? (
-            <View
-              style={{
-                flex: 1,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: "#fff", fontFamily: "Nunito-Regular" }}>
-                No withdrawal transactions found.
-              </Text>
-            </View>
-          ) : null
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyState}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingBottom: bottom + 120,
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#FFFFFF"
+          />
         }
       />
+
       <WithdrawSheet
         isVisible={isSheetVisible}
         onClose={() => setSheetVisible(false)}
       />
-    </SafeAreaView>
-  );
-}
-
-// -------------------------------------------------------------------
-//  Metric helper component
-// -------------------------------------------------------------------
-function Metric({
-  icon,
-  family = "Ionicons",
-  label,
-  value,
-}: {
-  icon: string;
-  family?: "Ionicons" | "FontAwesome5" | "MaterialCommunityIcons";
-  label: string;
-  value: number;
-}) {
-  const IconCmp =
-    family === "Ionicons"
-      ? Ionicons
-      : family === "MaterialCommunityIcons"
-      ? MaterialCommunityIcons
-      : FontAwesome5;
-  return (
-    <View style={{ flex: 1, alignItems: "center" }}>
-      <IconCmp
-        name={icon as any}
-        size={18}
-        color="#fff"
-      />
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
 
-// -------------------------------------------------------------------
-//  Withdrawal Bottom Sheet
-// -------------------------------------------------------------------
-
-const withdrawalSchema = yup.object().shape({
-  amount: yup
-    .string()
-    .required("Amount is required")
-    .matches(/^[0-9.]+$/, "Please enter a valid amount")
-    .test(
-      "min-amount",
-      "Minimum withdrawal is ₦1",
-      (value) => !value || Number(value) >= 1
-    ),
-});
-
-// Separate schema for bank account verification
-const bankAccountSchema = yup.object().shape({
-  bankCode: yup.string().required("Please select a bank"),
-  accountNumber: yup
-    .string()
-    .required("Account number is required")
-    .matches(/^[0-9]{10}$/, "Account number must be 10 digits"),
-});
-
-// Schema for withdrawal amount only
-const withdrawalAmountSchema = yup.object().shape({
-  amount: yup
-    .string()
-    .required("Amount is required")
-    .matches(/^[0-9.]+$/, "Please enter a valid amount")
-    .test(
-      "min-amount",
-      "Minimum withdrawal is 1",
-      (value) => !value || Number(value) >= 1
-    ),
-});
-
-const NIGERIAN_BANKS = [
-  { label: "Access Bank", value: "044" },
-  { label: "Citibank", value: "023" },
-  { label: "Ecobank", value: "050" },
-  { label: "Fidelity Bank", value: "070" },
-  { label: "First Bank", value: "011" },
-  { label: "FCMB", value: "214" },
-  { label: "GTBank", value: "058" },
-  { label: "Keystone Bank", value: "082" },
-  { label: "Kuda Bank", value: "50211" },
-  { label: "Opay", value: "999992" },
-  { label: "Palmpay", value: "999991" },
-  { label: "Polaris Bank", value: "076" },
-  { label: "Providus Bank", value: "101" },
-  { label: "Stanbic IBTC Bank", value: "221" },
-  { label: "Standard Chartered Bank", value: "068" },
-  { label: "Sterling Bank", value: "232" },
-  { label: "UBA", value: "033" },
-  { label: "Union Bank", value: "032" },
-  { label: "Unity Bank", value: "215" },
-  { label: "Wema Bank", value: "035" },
-  { label: "Zenith Bank", value: "057" },
-];
-
-function WithdrawSheet({
-  isVisible,
-  onClose,
-}: {
-  isVisible: boolean;
-  onClose: () => void;
-}) {
-  const [step, setStep] = useState<"list" | "add" | "verify" | "amount">(
-    "list"
-  );
-  const [selectedAccount, setSelectedAccount] = useState<any>(null);
-  const [verifiedDetails, setVerifiedDetails] = useState<any>(null);
-  const {
-    control,
-    handleSubmit,
-    formState: { errors, isValid },
-    reset,
-  } = useForm({
-    resolver: yupResolver(withdrawalSchema),
-    mode: "onChange",
-  });
-
-  // Separate form for bank account verification
-  const {
-    control: bankControl,
-    handleSubmit: handleBankSubmit,
-    formState: { errors: bankErrors, isValid: isBankValid },
-    reset: resetBank,
-  } = useForm({
-    resolver: yupResolver(bankAccountSchema),
-    mode: "onChange",
-  });
-
-  // Separate form for withdrawal amount
-  const {
-    control: amountControl,
-    handleSubmit: handleAmountSubmit,
-    formState: { errors: amountErrors, isValid: isAmountValid },
-    reset: resetAmount,
-  } = useForm({
-    resolver: yupResolver(withdrawalAmountSchema),
-    mode: "onChange",
-  });
-
-  const { mutate, isPending, isError } = useWithdraw();
-  const [message, setMessage] = useState("");
-  const { data: balanceData, isLoading: isBalanceLoading } = useBalance();
-  const {
-    data: bankAccountsData,
-    isLoading: areAccountsLoading,
-    refetch: refetchBankAccounts,
-  } = useBankAccounts();
-  const { mutate: verifyAccount, isPending: isVerifying } = useVerifyAccount();
-  const { mutate: addBankAccount, isPending: isAdding } = useAddBankAccount();
-
-  const handleAccountSelect = (account: any) => {
-    setSelectedAccount(account);
-    setStep("amount");
-  };
-
-  const handleVerify = (data: any) => {
-    setMessage("");
-    const bank = NIGERIAN_BANKS.find((b) => b.value === data.bankCode);
-    if (!bank) {
-      setMessage("Please select a valid bank.");
-      return;
-    }
-
-    if (!data.accountNumber) {
-      setMessage("Please enter your account number");
-      return;
-    }
-
-    verifyAccount(
-      { bankCode: data.bankCode, accountNumber: data.accountNumber },
-      {
-        onSuccess: ({ data: verifiedData }) => {
-          setVerifiedDetails({ ...verifiedData, bankName: bank.label });
-          setStep("verify");
-        },
-        onError: (err: any) => {
-          setMessage(
-            err?.response?.data?.message || "Could not verify account."
-          );
-        },
-      }
-    );
-  };
-
-  const handleAddAccount = () => {
-    if (!verifiedDetails) return;
-    setMessage("");
-    const bank = NIGERIAN_BANKS.find(
-      (b) => b.value === verifiedDetails.bankCode
-    );
-    addBankAccount(
-      { ...verifiedDetails, bankName: bank?.label || "" },
-      {
-        onSuccess: () => {
-          ToastAndroid.show("Account added!", 1500);
-          refetchBankAccounts();
-          setStep("list");
-          setVerifiedDetails(null);
-        },
-        onError: (err: any) => {
-          setMessage(err?.response?.data?.message || "Could not save account.");
-        },
-      }
-    );
-  };
-
-  const onSubmit = (data: any) => {
-    if (!selectedAccount) return;
-    setMessage("");
-    mutate(
-      {
-        amount: Number(data.amount),
-        bankAccountId: selectedAccount.id,
-      },
-      {
-        onSuccess: () => {
-          setMessage("Withdrawal successful!");
-          ToastAndroid.show("Withdrawal request submitted!", 2000);
-          setTimeout(() => {
-            onClose();
-            setMessage("");
-            reset();
-          }, 1500);
-        },
-        onError: (err: any) => {
-          setMessage("Withdrawal failed, try again later");
-        },
-      }
-    );
-  };
-
-  const handleClose = () => {
-    reset();
-    resetBank();
-    resetAmount();
-    setMessage("");
-    setStep("list");
-    setVerifiedDetails(null);
-    setSelectedAccount(null);
-    onClose();
-  };
-
-  const handleBack = () => {
-    setMessage("");
-    if (step === "amount") {
-      setSelectedAccount(null);
-      setStep("list");
-    } else if (step === "verify") {
-      setVerifiedDetails(null);
-      setStep("add");
-    } else if (step === "add") {
-      setStep("list");
-    }
-  };
-
-  const renderContent = () => {
-    if (step === "add") {
-      return (
-        <>
-          {/* Form for adding a new account */}
-          <Controller
-            control={bankControl}
-            name="bankCode"
-            render={({ field: { onChange, value } }) => (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Bank</Text>
-                <CustomPicker
-                  onChange={onChange}
-                  options={NIGERIAN_BANKS}
-                  placeholder="Select a bank"
-                  value={value}
-                  modalTitle="Choose a Bank"
-                />
-                {bankErrors.bankCode && (
-                  <Text style={styles.errorText}>
-                    {bankErrors.bankCode.message}
-                  </Text>
-                )}
-              </View>
-            )}
-          />
-          <Controller
-            control={bankControl}
-            name="accountNumber"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Account Number</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="10-digit account number"
-                  keyboardType="numeric"
-                  maxLength={10}
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value != null ? String(value) : ""}
-                />
-                {bankErrors.accountNumber && (
-                  <Text style={styles.errorText}>
-                    {bankErrors.accountNumber.message}
-                  </Text>
-                )}
-              </View>
-            )}
-          />
-          <TouchableOpacity
-            style={[styles.submitBtn, !isBankValid && { opacity: 0.6 }]}
-            onPress={() => handleBankSubmit(handleVerify)()}
-            disabled={isVerifying || !isBankValid}
-          >
-            {isVerifying ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitBtnText}>Verify Account</Text>
-            )}
-          </TouchableOpacity>
-          {message && <Text style={styles.inlineErrorText}>{message}</Text>}
-        </>
-      );
-    }
-
-    if (step === "verify") {
-      return (
-        <View style={{ alignItems: "center" }}>
-          <Text style={styles.inputLabel}>Account Name</Text>
-          <Text style={styles.verifiedName}>
-            {verifiedDetails?.accountName}
-          </Text>
-          <TouchableOpacity
-            style={styles.submitBtn}
-            onPress={handleAddAccount}
-            disabled={isAdding}
-          >
-            {isAdding ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitBtnText}>Save and Continue</Text>
-            )}
-          </TouchableOpacity>
-          {message && <Text style={styles.inlineErrorText}>{message}</Text>}
-        </View>
-      );
-    }
-
-    // Default step: 'list'
-    return (
-      <>
-        {areAccountsLoading ? (
-          <ActivityIndicator
-            color="#fff"
-            style={{ marginVertical: 20 }}
-          />
-        ) : bankAccountsData && bankAccountsData.data.length > 0 ? (
-          bankAccountsData?.data.map((account) => (
-            <TouchableOpacity
-              key={account.accountNumber}
-              style={styles.accountItem}
-              onPress={() => handleAccountSelect(account)}
-            >
-              <FontAwesome5
-                name="university"
-                size={24}
-                color="#fff"
-              />
-              <View style={{ flex: 1, marginLeft: 16 }}>
-                <Text style={styles.accountName}>{account.bankName}</Text>
-                <Text style={styles.accountNumber}>
-                  {account.accountNumber}
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={24}
-                color="#666"
-              />
-            </TouchableOpacity>
-          ))
-        ) : (
-          <View style={styles.emptyStateContainer}>
-            <Text style={styles.emptyStateText}>No saved accounts yet</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Add an account to get started
-            </Text>
-          </View>
-        )}
-        <TouchableOpacity
-          style={styles.addAccountBtn}
-          onPress={() => setStep("add")}
-        >
-          <Ionicons
-            name="add-circle-outline"
-            size={22}
-            color="#fff"
-          />
-          <Text style={styles.addAccountBtnText}>Add new bank account</Text>
-        </TouchableOpacity>
-      </>
-    );
-  };
-
-  const renderAmountStep = () => {
-    if (!selectedAccount) return null;
-    return (
-      <>
-        <View style={styles.accountItem}>
-          <FontAwesome5
-            name="university"
-            size={24}
-            color="#fff"
-          />
-          <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={styles.accountName}>{selectedAccount.bankName}</Text>
-            <Text style={styles.accountNumber}>
-              {selectedAccount.accountNumber}
-            </Text>
-          </View>
-        </View>
-        {/* Show current balance */}
-        <View style={styles.balanceRow}>
-          <Text style={styles.balanceRowLabel}>Current Balance</Text>
-          {isBalanceLoading ? (
-            <ActivityIndicator
-              color="#fff"
-              size="small"
-              style={{ marginLeft: 8 }}
-            />
-          ) : (
-            <Text style={styles.balanceRowAmount}>
-              ₦
-              {balanceData?.data?.wallet?.balance?.toLocaleString("en-NG", {
-                minimumFractionDigits: 2,
-              }) ?? "0.00"}
-            </Text>
-          )}
-        </View>
-        <Controller
-          control={amountControl}
-          name="amount"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Amount (₦)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., 5000"
-                keyboardType="numeric"
-                onBlur={onBlur}
-                onChangeText={onChange}
-                value={value != null ? String(value) : ""}
-              />
-              {amountErrors.amount && (
-                <Text style={styles.errorText}>
-                  {amountErrors.amount.message}
-                </Text>
-              )}
-            </View>
-          )}
-        />
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            backgroundColor: "#27272a",
-            borderRadius: 8,
-            padding: 16,
-            marginTop: 16,
-            marginBottom: 8,
-          }}
-        >
-          <View style={{ marginRight: 12, marginTop: 2 }}>
-            <Entypo
-              name="info-with-circle"
-              size={20}
-              color="#ef4444"
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{
-                color: "#ef4444",
-                fontFamily: "Nunito-Bold",
-                fontSize: RFValue(14),
-                marginBottom: 4,
-              }}
-            >
-              Withdrawal Fees
-            </Text>
-            <Text
-              style={{
-                color: "#9ca3af",
-                fontFamily: "Nunito-Regular",
-                fontSize: RFValue(12),
-                lineHeight: RFValue(18),
-              }}
-            >
-              • N10 for amounts below ₦5,000{"\n"}• N25 for amounts ₦5,000 -
-              ₦50,000{"\n"}• N50 for amounts above ₦50,000
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.submitBtn, !isAmountValid && { opacity: 0.6 }]}
-          onPress={() => handleAmountSubmit(onSubmit)()}
-          disabled={!isAmountValid || isPending}
-        >
-          {isPending ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitBtnText}>Submit Withdrawal</Text>
-          )}
-        </TouchableOpacity>
-      </>
-    );
-  };
-
-  return (
-    <Modal
-      isVisible={isVisible}
-      onBackdropPress={handleClose}
-      onBackButtonPress={handleClose}
-      onSwipeComplete={handleClose}
-      swipeDirection="down"
-      style={styles.sheetModal}
-      avoidKeyboard
-    >
-      <View style={styles.sheetContainer}>
-        <View style={styles.sheetGrabber} />
-        <View style={styles.sheetHeader}>
-          {step !== "list" ? (
-            <TouchableOpacity
-              onPress={handleBack}
-              style={styles.sheetNavButton}
-            >
-              <Ionicons
-                name="arrow-back"
-                size={24}
-                color="#fff"
-              />
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.sheetNavButton} />
-          )}
-          <Text style={styles.sheetTitle}>
-            {step === "list" && "Select Account"}
-            {step === "add" && "Add New Account"}
-            {step === "verify" && "Verify Account"}
-            {step === "amount" && "Enter Amount"}
-          </Text>
-          <TouchableOpacity
-            onPress={handleClose}
-            style={styles.sheetCloseButton}
-          >
-            <Ionicons
-              name="close"
-              size={24}
-              color="#666"
-            />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.sheetContent}>
-          {step === "amount" ? renderAmountStep() : renderContent()}
-          {message && step === "amount" && (
-            <Text
-              style={{
-                color: isError ? "#f43f5e" : "#22c55e",
-                textAlign: "center",
-                marginTop: 15,
-                fontFamily: "Nunito-Regular",
-              }}
-            >
-              {message}
-            </Text>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*                               Styles                               */
-/* ------------------------------------------------------------------ */
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#000" },
-
-  /* -------- Balance card -------- */
-  balanceCard: {
-    width: width - 40,
-    alignSelf: "center",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#fff",
-    padding: 24,
-    marginTop: 16,
-    overflow: "hidden",
-    position: "relative",
-    backgroundColor: "#1C1D1E",
-  },
-  balanceDecor: {
-    position: "absolute",
-    right: 16,
-    top: 0,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 6,
-  },
-  bar: {
-    width: 10,
-    borderRadius: 4,
-    backgroundColor: "#ff003c",
-  },
-  balanceLabel: {
-    color: "#d1d5db",
-    fontSize: RFValue(14),
-    fontFamily: "Nunito-Regular",
-  },
-  balance: {
-    fontSize: RFValue(32),
-    fontFamily: "Nunito-Medium",
-    color: "#fff",
-    marginTop: 4,
-    marginBottom: 6,
-  },
-
-  // Mini bonus balance
-  bonusPill: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: "#0E0E0E",
-    borderWidth: 1,
-    borderColor: "#2a2a2a",
-  },
-  bonusPillLabel: {
-    color: "#9ca3af",
-    fontFamily: "Nunito-Regular",
-    fontSize: RFValue(12),
-  },
-  bonusPillAmount: {
-    color: "#fff",
-    fontFamily: "Nunito-Bold",
-    fontSize: RFValue(13),
-  },
-
-  withdrawBtn: {
-    alignSelf: "flex-start",
-    backgroundColor: "#ff003c",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    marginBottom: 8,
-  },
-  withdrawText: {
-    color: "#fff",
-    fontSize: RFValue(14),
-    fontFamily: "Nunito-Medium",
-    textAlign: "center",
-  },
-  topupBtn: {
-    width: width - 40,
-    alignSelf: "center",
-    backgroundColor: "#ff003c",
-    borderRadius: 10,
-    paddingVertical: 16,
-    marginTop: 16,
-  },
-  topupText: {
-    color: "#fff",
-    fontSize: RFValue(14),
-    fontFamily: "Nunito-Medium",
-  },
-
-  // Bonus note text below wallet
-  bonusNote: {
-    color: "#9ca3af",
-    textAlign: "center",
-    marginTop: 8,
-    marginBottom: 4,
-    fontFamily: "Nunito-Regular",
-  },
-
-  /* -------- Metric strip -------- */
-  metricStrip: {
-    marginTop: 16,
-    flexDirection: "row",
-    backgroundColor: "#111",
-    borderRadius: 12,
-    marginHorizontal: 16,
-    paddingVertical: 16,
-  },
-  vLine: {
-    width: 1,
-    backgroundColor: "#27272a",
-  },
-  metricLabel: {
-    color: "#9ca3af",
-    fontSize: RFValue(11),
-    marginTop: 4,
-    fontFamily: "Nunito-Regular",
-  },
-  metricValue: {
-    color: "#fff",
-    fontFamily: "Nunito-Medium",
-    marginTop: 2,
-    fontSize: RFValue(16),
-  },
-
-  /* -------- Invite friends card - */
-  inviteCard: {
-    backgroundColor: "#fff",
-    marginVertical: 20,
-    marginHorizontal: 12,
-    padding: 18,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  inviteText: {
-    color: "#000",
-    fontSize: RFValue(12),
-    fontFamily: "Montserrat-Medium",
+  screen: {
     flex: 1,
+    backgroundColor: "#05070A",
   },
-  inviteBtn: {
-    backgroundColor: "#ff003c",
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  header: {
+    gap: 16,
+    paddingBottom: 22,
   },
-  inviteBtnTxt: { color: "#fff", fontWeight: "600" },
-
-  /* -------- Transaction list ---- */
-  txHeading: {
-    color: "#d1d5db",
-    fontSize: RFValue(20),
-    fontFamily: "Nunito-Medium",
-    marginLeft: 16,
-    marginBottom: 16,
-  },
-  txRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 18,
-  },
-  txType: { color: "#fff", marginBottom: 4 },
-  txAmount: {
-    color: "#fff",
-    fontSize: RFValue(20),
-    fontFamily: "Nunito-Medium",
-    marginBottom: 4,
-  },
-  txStatus: {
-    position: "absolute",
-    right: 16,
-    top: 24,
-    fontFamily: "Nunito-Medium",
-  },
-  txSeparator: { height: 1, backgroundColor: "#27272a" },
-
-  // New styles for the react-native-modal sheet
-  sheetModal: {
-    justifyContent: "flex-end",
-    margin: 0,
-  },
-  sheetContainer: {
-    backgroundColor: "#1C1D1E",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
-    paddingBottom: 30,
-  },
-  sheetGrabber: {
-    width: 40,
-    height: 5,
-    backgroundColor: "#444",
-    borderRadius: 2.5,
-    alignSelf: "center",
-    marginVertical: 8,
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#333",
-  },
-  sheetTitle: {
-    fontSize: RFValue(18),
-    fontFamily: "Nunito-Bold",
-    color: "#fff",
-  },
-  sheetBalance: {
-    fontSize: RFValue(18),
-    fontFamily: "Nunito-Bold",
-    color: "#fff",
-    textAlign: "right",
-  },
-  sheetNavButton: {
-    padding: 5,
-    width: 34, // to balance the flexbox layout
-  },
-  sheetCloseButton: {
-    padding: 5,
-  },
-  sheetContent: {
-    paddingTop: 20,
-  },
-  accountItem: {
+  noticeCard: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    backgroundColor: "#27272a",
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  accountName: {
-    color: "#fff",
-    fontFamily: "Nunito-Medium",
-    fontSize: RFValue(14),
-  },
-  accountNumber: {
-    color: "#9ca3af",
-    fontFamily: "Nunito-Regular",
-    fontSize: RFValue(12),
-  },
-  addAccountBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
+    gap: 10,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#374151",
-    borderStyle: "dashed",
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  addAccountBtnText: {
-    color: "#fff",
-    fontFamily: "Nunito-Medium",
-    fontSize: RFValue(14),
-    marginLeft: 8,
-  },
-  verifiedName: {
-    fontSize: RFValue(22),
-    fontFamily: "Nunito-Bold",
-    color: "#fff",
-    marginVertical: 16,
-    textAlign: "center",
-  },
-  inputGroup: {
-    marginBottom: 15,
-  },
-  inputLabel: {
-    color: "#d1d5db",
-    fontSize: RFValue(12),
-    fontFamily: "Nunito-Regular",
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: "#27272a",
-    borderRadius: 8,
-    color: "#fff",
+    borderColor: "#7F1D1D",
+    backgroundColor: "#2A0F18",
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: RFValue(14),
   },
-  errorText: {
-    color: "#f43f5e",
-    fontSize: RFValue(11),
-    marginTop: 5,
-  },
-  submitBtn: {
-    backgroundColor: "#ff003c",
-    borderRadius: 10,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  submitBtnText: {
-    color: "#fff",
-    fontFamily: "Nunito-Bold",
-    fontSize: RFValue(14),
-  },
-  emptyStateContainer: {
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  emptyStateText: {
-    color: "#fff",
-    fontFamily: "Nunito-Medium",
-    fontSize: RFValue(16),
-  },
-  emptyStateSubtext: {
-    color: "#9ca3af",
+  noticeText: {
+    flex: 1,
+    color: "#FFE4E6",
+    fontSize: 13,
+    lineHeight: 18,
     fontFamily: "Nunito-Regular",
-    fontSize: RFValue(13),
-    marginTop: 4,
   },
-  inlineErrorText: {
-    color: "#f43f5e",
+  historyHeader: {
+    marginTop: 6,
+  },
+  historyCopy: {
+    gap: 4,
+  },
+  historyTitle: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontFamily: "Nunito-Bold",
+  },
+  historySubtitle: {
+    color: "#94A3B8",
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: "Nunito-Regular",
+  },
+  rowSkeleton: {
+    height: 114,
+  },
+  separator: {
+    height: 12,
+  },
+  emptyState: {
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#1E222A",
+    backgroundColor: "#0B0E12",
+    padding: 24,
+  },
+  emptyIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#11141A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
     textAlign: "center",
-    marginTop: 15,
-    fontFamily: "Nunito-Regular",
-  },
-  balanceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#18181b",
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginBottom: 12,
-    alignSelf: "flex-start",
-  },
-  balanceRowLabel: {
-    color: "#9ca3af",
-    fontSize: RFValue(12),
-    fontFamily: "Nunito-Regular",
-    marginRight: 8,
-  },
-  balanceRowAmount: {
-    color: "#fff",
-    fontSize: RFValue(14),
     fontFamily: "Nunito-Bold",
+  },
+  emptyText: {
+    color: "#94A3B8",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    fontFamily: "Nunito-Regular",
+  },
+  retryButton: {
+    minHeight: 46,
+    borderRadius: 16,
+    backgroundColor: "#F43F5E",
+    paddingHorizontal: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: "Nunito-Bold",
+  },
+  pressed: {
+    opacity: 0.9,
   },
 });

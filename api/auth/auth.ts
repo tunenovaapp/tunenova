@@ -201,6 +201,7 @@ export interface UserProfile {
   referredCode: string | null;
   selectedGenres: string[] | null;
   selectedPlatforms: string[] | null;
+  expoPushToken?: string | null;
   notificationsEnabled: boolean;
 }
 

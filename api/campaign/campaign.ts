@@ -153,6 +153,8 @@ export interface Campaign {
   isPaid: boolean;
   budget: number | null;
   status: "active" | "pending" | "completed" | string;
+  paymentStatus?: string | null;
+  complete?: boolean;
   listens: number;
   fans: number;
   paystackReference: string | null;
@@ -379,8 +381,6 @@ const likeRequest = async ({ id }: LikeBody): Promise<LikeResponse> => {
 export function useLikeCampaign(
   options?: UseMutationOptions<LikeResponse, AxiosError<ApiError>, LikeBody>
 ) {
-  const qc = useQueryClient();
-
   return useMutation<LikeResponse, AxiosError<ApiError>, LikeBody>({
     mutationFn: likeRequest,
     ...{
@@ -420,8 +420,6 @@ const disLikeRequest = async ({
 export function useDisLikeCampaign(
   options?: UseMutationOptions<disLikeResponse, AxiosError<ApiError>, LikeBody>
 ) {
-  const qc = useQueryClient();
-
   return useMutation<disLikeResponse, AxiosError<ApiError>, disLikeBody>({
     mutationFn: disLikeRequest,
     ...{
@@ -467,8 +465,6 @@ export function useDiscoverCampaign(
     DiscoverBody
   >
 ) {
-  const qc = useQueryClient();
-
   return useMutation<DiscoverResponse, AxiosError<ApiError>, DiscoverBody>({
     mutationFn: discoverRequest,
     ...{

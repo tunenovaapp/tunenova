@@ -1,317 +1,336 @@
-import { Feather, Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React from "react";
+import { useMyCampaigns } from "@/api/campaign/campaign";
+import { AnalyticsCampaignCard } from "@/components/analytics/analytics-campaign-card";
 import {
-  ActivityIndicator,
+  CampaignFilterKey,
+  getCampaignAttentionState,
+} from "@/components/analytics/campaign-status";
+import {
+  AnalyticsFilterChips,
+  AnalyticsFilterOption,
+} from "@/components/analytics/analytics-filter-chips";
+import {
+  AnalyticsLoadingState,
+  AnalyticsMessageState,
+} from "@/components/analytics/analytics-state";
+import {
+  AnalyticsSummaryHero,
+  AnalyticsSummaryMetric,
+} from "@/components/analytics/analytics-summary-hero";
+import { router } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
+import {
   FlatList,
   RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
-import { RFValue } from "react-native-responsive-fontsize";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useMyCampaigns } from "../../api/campaign/campaign";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const formatCurrency = (amount: number) =>
+  `\u20A6${Number(amount).toLocaleString("en-NG", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
 
 export default function CampaignsScreen() {
+  const { top, bottom } = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 390;
+  const [filter, setFilter] = useState<CampaignFilterKey>("all");
+
   const { data, isLoading, error, refetch, isFetching } = useMyCampaigns();
-  const campaigns = data?.data || [];
-  const hasData = campaigns.length > 0;
 
-  /* --------------------------------------------------------------- */
-  /*  Header                                                         */
-  /* --------------------------------------------------------------- */
-  const Header = () => (
-    <View
-      style={{
-        paddingHorizontal: 24,
-        marginTop: 5,
-        marginBottom: 20,
-      }}
-    >
-      <Text style={styles.h1}>Your Campaigns</Text>
-    </View>
+  const campaigns = useMemo(() => data?.data ?? [], [data?.data]);
+
+  const campaignCounts = useMemo(
+    () => ({
+      total: campaigns.length,
+      active: campaigns.filter(
+        (campaign) => getCampaignAttentionState(campaign).filter === "active",
+      ).length,
+      setup: campaigns.filter(
+        (campaign) => getCampaignAttentionState(campaign).filter === "setup",
+      ).length,
+      completed: campaigns.filter(
+        (campaign) =>
+          getCampaignAttentionState(campaign).filter === "completed",
+      ).length,
+      totalListens: campaigns.reduce(
+        (sum, campaign) => sum + Math.max(0, Number(campaign.listens || 0)),
+        0,
+      ),
+    }),
+    [campaigns],
   );
 
-  /* --------------------------------------------------------------- */
-  /*  Empty state component                                          */
-  /* --------------------------------------------------------------- */
-  const Empty = () => (
-    <View style={styles.emptyCard}>
-      <Ionicons
-        name="clipboard-outline"
-        size={64}
-        color="#a1a1aa"
+  const summaryMetrics = useMemo<AnalyticsSummaryMetric[]>(
+    () => [
+      {
+        label: "Total campaigns",
+        value: String(campaignCounts.total),
+        accent: "#1F0E16",
+        icon: "albums-outline",
+      },
+      {
+        label: "Active",
+        value: String(campaignCounts.active),
+        accent: "#0D1F16",
+        icon: "pulse-outline",
+      },
+      {
+        label: "Need setup",
+        value: String(campaignCounts.setup),
+        accent: "#2A1B0D",
+        icon: "alert-circle-outline",
+      },
+      {
+        label: "Total listens",
+        value: campaignCounts.totalListens.toLocaleString("en-NG"),
+        accent: "#0E1B33",
+        icon: "play-outline",
+      },
+    ],
+    [
+      campaignCounts.active,
+      campaignCounts.setup,
+      campaignCounts.total,
+      campaignCounts.totalListens,
+    ],
+  );
+
+  const filterOptions = useMemo<AnalyticsFilterOption[]>(
+    () => [
+      { key: "all", label: "All", count: campaignCounts.total },
+      { key: "setup", label: "Setup", count: campaignCounts.setup },
+      { key: "active", label: "Active", count: campaignCounts.active },
+      { key: "completed", label: "Completed", count: campaignCounts.completed },
+    ],
+    [
+      campaignCounts.active,
+      campaignCounts.completed,
+      campaignCounts.setup,
+      campaignCounts.total,
+    ],
+  );
+
+  const filteredCampaigns = useMemo(() => {
+    if (filter === "all") {
+      return campaigns;
+    }
+
+    return campaigns.filter(
+      (campaign) => getCampaignAttentionState(campaign).filter === filter,
+    );
+  }, [campaigns, filter]);
+
+  const renderHeader = () => (
+    <View style={[styles.header, { paddingTop: 15 }]}>
+      <AnalyticsSummaryHero
+        metrics={summaryMetrics}
+        compact={isCompact}
+        onPromote={() => router.push("/promote")}
       />
-      <Text style={styles.emptyTitle}>No active campaigns</Text>
-      <Text style={styles.emptySub}>
-        You don&apos;t have any Campaigns yet.{"\n"}When you do, they will
-        appear here
-      </Text>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Campaign status</Text>
+        <Text style={styles.sectionSubtitle}>
+          Filter quickly by campaigns that need setup attention, are currently
+          running, or are already complete.
+        </Text>
+        <AnalyticsFilterChips
+          options={filterOptions}
+          value={filter}
+          onChange={(value) => setFilter(value as CampaignFilterKey)}
+        />
+      </View>
+
+      <View style={styles.listHeading}>
+        <View style={styles.listHeadingCopy}>
+          <Text style={styles.listTitle}>Campaign list</Text>
+          <Text style={styles.listSubtitle}>
+            {filter === "all"
+              ? "Every campaign you have created, with current state and listen progress."
+              : `Showing ${filteredCampaigns.length} ${filter} campaign${filteredCampaigns.length === 1 ? "" : "s"}.`}
+          </Text>
+        </View>
+        <Text style={styles.totalBudget}>
+          Paid budget:{" "}
+          <Text style={styles.totalBudgetValue}>
+            {formatCurrency(
+              campaigns.reduce(
+                (sum, campaign) =>
+                  sum +
+                  Math.max(
+                    0,
+                    Number(campaign.isPaid ? campaign.budget || 0 : 0),
+                  ),
+                0,
+              ),
+            )}
+          </Text>
+        </Text>
+      </View>
     </View>
   );
 
-  /* --------------------------------------------------------------- */
-  /*  "Promote your Song"  CTA                                       */
-  /* --------------------------------------------------------------- */
-  const PromoteCTA = () => (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      style={styles.promoteBtn}
-      onPress={() => router.push("/promote")}
-    >
-      <Text style={styles.promoteTxt}>Promote your song</Text>
-    </TouchableOpacity>
-  );
-
-  /* --------------------------------------------------------------- */
-  /*  Campaign card component                                        */
-  /* --------------------------------------------------------------- */
-  const Card = ({ item }: { item: any; index: number }) => {
-    const budget = !isNaN(Number(item.budget)) ? Number(item.budget) : 0;
-    const min = Math.floor(budget / 20);
-    const max = min + 50; // kept if you need it elsewhere
-
-    const listens: number = Math.max(0, +item?.listens || 0);
-
-    // ✅ Progress against MIN target (clamped 0–1). Hidden when no budget or min==0.
-    const progress = min > 0 ? Math.min(listens / min, 1) : 0;
+  const renderEmptyState = useCallback(() => {
+    if (campaigns.length === 0) {
+      return (
+        <AnalyticsMessageState
+          kind="empty"
+          title="No campaigns yet"
+          description="When you launch a campaign, this dashboard will start showing setup states, listens, and overall progress here."
+          actionLabel="Promote your song"
+          onAction={() => router.push("/promote")}
+        />
+      );
+    }
 
     return (
-      <TouchableOpacity
-        onPress={() => {
-          router.push({
-            pathname: "/(others)/campaignId",
-            params: {
-              id: item.id,
-              platform: item.targetAudience?.[0],
-            },
-          });
-        }}
-      >
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardNo}>
-              #{item.id}{" "}
-              <Text
-                style={{
-                  color: "#ff003c",
-                  fontFamily: "Nunito-Medium",
-                }}
-              >
-                {item.isPaid && item.paymentStatus === "pending"
-                  ? "(Finish setup)"
-                  : item.paymentStatus === "processing"
-                  ? "(Payment processing)"
-                  : ""}
-              </Text>
-            </Text>
-            <Feather
-              name="chevron-right"
-              size={22}
-              color="#fff"
-            />
-          </View>
-
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <Text style={styles.cardTitle}>{item.songTitle}</Text>
-            {item?.isPaid ? (
-              <Text
-                style={{
-                  textTransform: "capitalize",
-                  color: "#fff",
-                  fontFamily: "Nunito-Light",
-                  fontSize: RFValue(12),
-                }}
-              >
-                {item.targetAudience?.[0] ?? ""}
-              </Text>
-            ) : null}
-          </View>
-
-          <Text style={styles.budget}>
-            Budget:&nbsp;
-            <Text style={styles.budgetAmt}>
-              {budget === 0 ? "Free" : `₦${budget.toLocaleString("en-NG")}`}
-            </Text>
-          </Text>
-
-          {/* progress: listens vs MIN */}
-          {budget > 0 && min > 0 ? (
-            <>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[styles.progressFill, { width: `${progress * 100}%` }]}
-                />
-              </View>
-
-              <View style={styles.progressMeta}>
-                <Text style={styles.metaLeft}>{listens} Listens</Text>
-                {/* <Text style={styles.metaRight}>Min target: {min}</Text> */}
-              </View>
-            </>
-          ) : null}
-        </View>
-      </TouchableOpacity>
+      <AnalyticsMessageState
+        kind="empty"
+        title="Nothing in this filter yet"
+        description={`There are no ${filter} campaigns right now. Switch filters or start a new campaign.`}
+        actionLabel="Show all campaigns"
+        onAction={() => setFilter("all")}
+      />
     );
-  };
+  }, [campaigns.length, filter]);
 
-  /* --------------------------------------------------------------- */
-  /*  Render                                                         */
-  /* --------------------------------------------------------------- */
-  return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" />
+  if (isLoading) {
+    return (
+      <View style={styles.screen}>
+        <StatusBar barStyle="light-content" />
+        <View style={[styles.loadingContainer, { paddingTop: top + 14 }]}>
+          <AnalyticsLoadingState compact={isCompact} />
+        </View>
+      </View>
+    );
+  }
 
-      <Header />
-
-      {isLoading ? (
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-        >
-          <ActivityIndicator
-            size="large"
-            color="#ff003c"
+  if (error && !campaigns.length) {
+    return (
+      <View style={styles.screen}>
+        <StatusBar barStyle="light-content" />
+        <View style={[styles.loadingContainer, { paddingTop: top + 14 }]}>
+          <AnalyticsMessageState
+            kind="error"
+            title="Failed to load campaigns"
+            description={
+              error.message ||
+              "An unexpected error occurred while loading campaign analytics."
+            }
+            actionLabel="Try again"
+            onAction={() => refetch()}
           />
         </View>
-      ) : error ? (
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-        >
-          <Text style={{ color: "#ff003c", fontSize: 16, marginBottom: 10 }}>
-            Failed to load campaigns
-          </Text>
-          <Text style={{ color: "#737373" }}>
-            {error.message || "An error occurred."}
-          </Text>
-        </View>
-      ) : hasData ? (
-        <FlatList
-          data={campaigns}
-          keyExtractor={(c: any) => String(c.id)}
-          renderItem={Card}
-          contentContainerStyle={{ paddingBottom: 50 }}
-          ItemSeparatorComponent={() => <View style={{ height: 22 }} />}
-          refreshControl={
-            <RefreshControl
-              refreshing={isFetching}
-              onRefresh={refetch}
-              tintColor="#ff003c"
-              colors={["#ff003c"]}
-            />
-          }
-        />
-      ) : (
-        <View style={{ justifyContent: "flex-start" }}>
-          <Empty />
-        </View>
-      )}
+      </View>
+    );
+  }
 
-      <PromoteCTA />
-    </SafeAreaView>
+  return (
+    <View style={styles.screen}>
+      <StatusBar barStyle="light-content" />
+
+      <FlatList
+        data={filteredCampaigns}
+        keyExtractor={(campaign) => String(campaign.id)}
+        renderItem={({ item }) => (
+          <AnalyticsCampaignCard
+            campaign={item}
+            statusMeta={getCampaignAttentionState(item)}
+            onPress={() =>
+              router.push({
+                pathname: "/(others)/campaignId",
+                params: {
+                  id: item.id,
+                  platform: item.targetAudience?.[0],
+                },
+              })
+            }
+          />
+        )}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyState}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingBottom: bottom + 44,
+          flexGrow: 1,
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isFetching}
+            onRefresh={refetch}
+            tintColor="#ff003c"
+            colors={["#ff003c"]}
+          />
+        }
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#000" },
-  h1: {
-    fontSize: RFValue(22),
+  screen: {
+    flex: 1,
+    backgroundColor: "#05070A",
+  },
+  loadingContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  header: {
+    gap: 18,
+    paddingBottom: 22,
+  },
+  section: {
+    gap: 8,
+  },
+  sectionTitle: {
+    color: "#FFFFFF",
+    fontSize: 21,
     fontFamily: "Nunito-Bold",
-    color: "#fff",
-    textAlign: "center",
   },
-
-  /* ---------- card ---------- */
-  card: {
-    backgroundColor: "#1f1f1f",
-    borderRadius: 14,
-    padding: 20,
-    marginHorizontal: 24,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  cardNo: { color: "#a1a1aa", fontFamily: "Nunito-Bold" },
-  cardTitle: {
-    fontSize: 20,
-    fontFamily: "Nunito-Bold",
-    marginVertical: 6,
-    color: "#fff",
-  },
-  budget: {
-    color: "#a1a1aa",
-    marginBottom: 12,
-    fontFamily: "Nunito-Regular",
-  },
-  budgetAmt: { color: "#fff", fontFamily: "Nunito-Bold" },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#3f3f46",
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#ff003c",
-  },
-  progressMeta: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  metaLeft: {
-    color: "#a1a1aa",
+  sectionSubtitle: {
+    color: "#94A3B8",
     fontSize: 13,
+    lineHeight: 19,
     fontFamily: "Nunito-Regular",
   },
-  metaRight: {
-    color: "#a1a1aa",
-    fontSize: 13,
-    fontFamily: "Nunito-Regular",
+  listHeading: {
+    gap: 6,
   },
-
-  /* ---------- empty ---------- */
-  emptyCard: {
-    alignSelf: "center",
-    width: "85%",
-    backgroundColor: "#1f1f1f",
-    borderRadius: 20,
-    paddingVertical: 60,
-    alignItems: "center",
+  listHeadingCopy: {
+    gap: 4,
   },
-  emptyTitle: {
+  listTitle: {
+    color: "#FFFFFF",
     fontSize: 22,
     fontFamily: "Nunito-Bold",
-    marginTop: 18,
-    color: "#fff",
   },
-  emptySub: {
-    textAlign: "center",
-    color: "#a1a1aa",
-    marginTop: 6,
-    lineHeight: 20,
+  listSubtitle: {
+    color: "#94A3B8",
+    fontSize: 13,
+    lineHeight: 19,
     fontFamily: "Nunito-Regular",
   },
-
-  /* ---------- promote btn ---- */
-  promoteBtn: {
-    backgroundColor: "#ff003c",
-    marginHorizontal: 24,
-    borderRadius: 12,
-    paddingVertical: 18,
-    alignItems: "center",
-    marginTop: 15,
-    marginBottom: 30,
+  totalBudget: {
+    color: "#CBD5E1",
+    fontSize: 13,
+    fontFamily: "Nunito-Regular",
   },
-  promoteTxt: { color: "#fff", fontSize: 18, fontFamily: "Nunito-Bold" },
+  totalBudgetValue: {
+    color: "#FFFFFF",
+    fontFamily: "Nunito-Bold",
+    fontVariant: ["tabular-nums"],
+  },
+  separator: {
+    height: 12,
+  },
 });

@@ -13,31 +13,78 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-// Uncomment if you want automatic paste detection on Android < 13
-// import * as Clipboard from "expo-clipboard";
 
 const { width } = Dimensions.get("window");
 const CELL_SIZE = Math.min(72, width / 5.5);
 const CELL_COUNT = 4;
 const RESEND_SECONDS = 60;
 
+type OTPCellProps = {
+  idx: number;
+  value: string;
+  focusedIdx: SharedValue<number>;
+  setRef: (ref: TextInput | null) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  onChangeText: (text: string) => void;
+  onKeyPress: (event: any) => void;
+  isLast: boolean;
+};
+
+function OTPCell({
+  idx,
+  value,
+  focusedIdx,
+  setRef,
+  onFocus,
+  onBlur,
+  onChangeText,
+  onKeyPress,
+  isLast,
+}: OTPCellProps) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const isFocused = focusedIdx.value === idx;
+    const scale = withTiming(isFocused ? 1.05 : 1, { duration: 200 });
+    const border = withTiming(isFocused ? 2 : 1, { duration: 200 });
+
+    return {
+      transform: [{ scale }],
+      borderWidth: border,
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.codeCell, animatedStyle]}>
+      <TextInput
+        ref={setRef}
+        style={styles.codeInput}
+        keyboardType="number-pad"
+        maxLength={1}
+        autoCorrect={false}
+        value={value}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onChangeText={onChangeText}
+        onKeyPress={onKeyPress}
+        returnKeyType={isLast ? "done" : "next"}
+        autoCapitalize="none"
+      />
+    </Animated.View>
+  );
+}
+
 export default function OTPVerificationScreen() {
-  // State -------------------------------------------------------------
   const [code, setCode] = useState<string[]>(Array(CELL_COUNT).fill(""));
   const [timer, setTimer] = useState(RESEND_SECONDS);
   const [submitting, setSubmitting] = useState(false);
-
-  // Refs to each TextInput to manage focus programmatically
   const refs = useRef<TextInput[]>([]);
-
-  // Reanimated values per cell
   const focusedIdx = useSharedValue<number>(-1);
 
-  // Countdown timer ---------------------------------------------------
   useEffect(() => {
     let id: NodeJS.Timeout;
     if (timer > 0) {
@@ -46,23 +93,35 @@ export default function OTPVerificationScreen() {
     return () => clearInterval(id);
   }, [timer]);
 
-  // Helper to update a single digit and auto‑navigate focus
+  const handleComplete = useCallback(async (fullCode: string) => {
+    setSubmitting(true);
+    Keyboard.dismiss();
+
+    await new Promise((res) => setTimeout(res, 1000));
+
+    router.push("/(auth)/music-platform");
+  }, []);
+
   const updateDigit = useCallback(
     (digit: string, idx: number) => {
       const newCode = [...code];
 
-      // Handle paste – if user pasted entire code into first box
       if (digit.length > 1) {
         const chars = digit.slice(0, CELL_COUNT).split("");
-        for (let i = 0; i < CELL_COUNT; i++) newCode[i] = chars[i] || "";
+        for (let i = 0; i < CELL_COUNT; i++) {
+          newCode[i] = chars[i] || "";
+        }
         setCode(newCode);
+
         const filled = chars.filter(Boolean).length === CELL_COUNT;
-        if (filled) handleComplete(chars.join(""));
-        else refs.current[chars.filter(Boolean).length]?.focus();
+        if (filled) {
+          handleComplete(chars.join(""));
+        } else {
+          refs.current[chars.filter(Boolean).length]?.focus();
+        }
         return;
       }
 
-      // Normal single‑character entry
       newCode[idx] = digit;
       setCode(newCode);
 
@@ -70,50 +129,22 @@ export default function OTPVerificationScreen() {
         refs.current[idx + 1]?.focus();
       }
 
-      // Completed
       if (newCode.every((c) => c !== "")) {
         handleComplete(newCode.join(""));
       }
     },
-    [code]
+    [code, handleComplete]
   );
 
-  // Backspace handling – move focus to previous cell
-  const handleKeyPress = (e: any, idx: number) => {
-    if (e.nativeEvent.key === "Backspace" && code[idx] === "" && idx > 0) {
+  const handleKeyPress = (event: any, idx: number) => {
+    if (event.nativeEvent.key === "Backspace" && code[idx] === "" && idx > 0) {
       refs.current[idx - 1]?.focus();
     }
   };
 
-  // Successful completion of code entry
-  const handleComplete = async (fullCode: string) => {
-    setSubmitting(true);
-    Keyboard.dismiss();
-
-    // TODO: API call – replace with real verification logic
-    await new Promise((res) => setTimeout(res, 1000));
-
-    // Valid – go to next screen
-    router.push("/(auth)/music-platform");
-  };
-
-  // Resend action -----------------------------------------------------
   const handleResend = () => {
-    // TODO: call resend API
     setTimer(RESEND_SECONDS);
   };
-
-  // Cell animated styles ---------------------------------------------
-  const makeCellStyle = (idx: number) =>
-    useAnimatedStyle(() => {
-      const isFocused = focusedIdx.value === idx;
-      const scale = withTiming(isFocused ? 1.05 : 1, { duration: 200 });
-      const border = withTiming(isFocused ? 2 : 1, { duration: 200 });
-      return {
-        transform: [{ scale }],
-        borderWidth: border,
-      };
-    });
 
   return (
     <KeyboardAvoidingView
@@ -122,48 +153,43 @@ export default function OTPVerificationScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <Animated.View style={[styles.innerWrapper]}>
-          {/* Faux progress – 2 / 4 filled */}
+        <Animated.View style={styles.innerWrapper}>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: width * 0.5 }]} />
           </View>
 
           <Text style={styles.heading}>Verification code sent</Text>
           <Text style={styles.subHeading}>
-            Please enter the 4‑digit code we sent to your email address
+            Please enter the 4-digit code we sent to your email address
           </Text>
 
-          {/* OTP cells --------------------------------------------------- */}
           <View style={styles.codeRow}>
-            {Array.from({ length: CELL_COUNT }).map((_, idx) => {
-              const rCell = makeCellStyle(idx);
-              return (
-                <Animated.View
-                  key={idx}
-                  style={[styles.codeCell, rCell]}
-                >
-                  <TextInput
-                    ref={(ref) => (refs.current[idx] = ref!)}
-                    style={styles.codeInput}
-                    keyboardType="number-pad"
-                    maxLength={1}
-                    autoCorrect={false}
-                    value={code[idx]}
-                    onFocus={() => (focusedIdx.value = idx)}
-                    onBlur={() => (focusedIdx.value = -1)}
-                    onChangeText={(t) =>
-                      updateDigit(t.replace(/[^0-9]/g, ""), idx)
-                    }
-                    onKeyPress={(e) => handleKeyPress(e, idx)}
-                    returnKeyType={idx === CELL_COUNT - 1 ? "done" : "next"}
-                    autoCapitalize="none"
-                  />
-                </Animated.View>
-              );
-            })}
+            {Array.from({ length: CELL_COUNT }).map((_, idx) => (
+              <OTPCell
+                key={idx}
+                idx={idx}
+                value={code[idx]}
+                focusedIdx={focusedIdx}
+                setRef={(ref) => {
+                  if (ref) {
+                    refs.current[idx] = ref;
+                  }
+                }}
+                onFocus={() => {
+                  focusedIdx.value = idx;
+                }}
+                onBlur={() => {
+                  focusedIdx.value = -1;
+                }}
+                onChangeText={(text) =>
+                  updateDigit(text.replace(/[^0-9]/g, ""), idx)
+                }
+                onKeyPress={(event) => handleKeyPress(event, idx)}
+                isLast={idx === CELL_COUNT - 1}
+              />
+            ))}
           </View>
 
-          {/* Resend link -------------------------------------------------- */}
           <TouchableOpacity
             disabled={timer > 0}
             onPress={handleResend}
@@ -176,7 +202,6 @@ export default function OTPVerificationScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* Proceed button --------------------------------------------- */}
           <TouchableOpacity
             style={[
               styles.button,
@@ -187,7 +212,7 @@ export default function OTPVerificationScreen() {
             activeOpacity={0.9}
           >
             <Text style={styles.buttonText}>
-              {submitting ? "…" : "Proceed"}
+              {submitting ? "..." : "Proceed"}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -196,9 +221,6 @@ export default function OTPVerificationScreen() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -223,7 +245,6 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 32,
     fontFamily: "Nunito-Bold",
-
     color: "#fff",
     textAlign: "center",
   },

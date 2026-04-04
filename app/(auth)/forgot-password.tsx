@@ -1,4 +1,5 @@
 import { useForgotPassword } from "@/api/auth/auth";
+import { RFValue } from "@/utils/responsiveFont";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useNavigation } from "@react-navigation/native";
 import { router } from "expo-router";
@@ -16,7 +17,6 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { RFValue } from "react-native-responsive-fontsize";
 import * as yup from "yup";
 
 // Validation accepts either email or numeric phone (basic)

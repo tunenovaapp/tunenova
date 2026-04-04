@@ -2,13 +2,14 @@ import { useResetPassword } from "@/api/auth/auth";
 import { Ionicons } from "@expo/vector-icons";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -29,6 +30,8 @@ import * as yup from "yup";
  * ---------------------------------------------------------------------------
  */
 
+const CELL_COUNT = 4;
+
 const schema = yup.object({
   password: yup
     .string()
@@ -42,11 +45,25 @@ const schema = yup.object({
 
 type FormData = yup.InferType<typeof schema>;
 
+const normalizeCodeValue = (value?: string | string[]) => {
+  const rawValue = Array.isArray(value) ? value.join("") : value ?? "";
+  return rawValue.replace(/\D/g, "").slice(0, CELL_COUNT);
+};
+
 export default function ResetPasswordScreen() {
-  const { code } = useLocalSearchParams();
+  const { code } = useLocalSearchParams<{ code?: string | string[] }>();
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [isCodeFocused, setIsCodeFocused] = useState(false);
+  const [codeValue, setCodeValue] = useState(() => normalizeCodeValue(code));
+  const codeInputRef = useRef<TextInput | null>(null);
+  const confirmPasswordRef = useRef<TextInput | null>(null);
+  const codeDigits = useMemo(
+    () => Array.from({ length: CELL_COUNT }, (_, idx) => codeValue[idx] ?? ""),
+    [codeValue]
+  );
 
   const {
     control,
@@ -56,18 +73,42 @@ export default function ResetPasswordScreen() {
     defaultValues: { password: "", confirm: "" },
     resolver: yupResolver(schema),
   });
-  const { mutate, isPending, isSuccess, isError } = useResetPassword();
+  const { mutate, isPending, isSuccess } = useResetPassword();
 
-  // Shake animation ---------------------------------------------------
+  useEffect(() => {
+    setCodeValue(normalizeCodeValue(code));
+  }, [code]);
+
+  const handleCodeChange = (value: string) => {
+    const sanitized = value.replace(/\D/g, "").slice(0, CELL_COUNT);
+
+    setCodeError(null);
+    setCodeValue(sanitized);
+  };
+
+  const getResetCode = () => {
+    const resetCode = codeValue;
+
+    if (resetCode.length !== CELL_COUNT) {
+      setCodeError("Enter the 4-digit reset code.");
+      codeInputRef.current?.focus();
+      setIsCodeFocused(true);
+      return null;
+    }
+
+    return resetCode;
+  };
 
   const onValid = async (data: FormData) => {
     setMessage(null);
-    if (!code || typeof code !== "string") {
-      setMessage("Verification code is required.");
+
+    const resetCode = getResetCode();
+    if (!resetCode) {
       return;
     }
+
     mutate(
-      { code, password: data.password },
+      { code: resetCode, password: data.password },
       {
         onSuccess: () => {
           setMessage("Password reset successful! Redirecting to login...");
@@ -94,6 +135,57 @@ export default function ResetPasswordScreen() {
           <Text style={styles.heading}>Reset Password</Text>
           <Text style={styles.subHeading}>Choose a new password</Text>
 
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Reset Code</Text>
+            <Pressable
+              style={styles.codeRow}
+              onPress={() => {
+                codeInputRef.current?.focus();
+                setIsCodeFocused(true);
+              }}
+            >
+              <TextInput
+                ref={codeInputRef}
+                style={styles.hiddenCodeInput}
+                value={codeValue}
+                onChangeText={handleCodeChange}
+                onFocus={() => setIsCodeFocused(true)}
+                onBlur={() => setIsCodeFocused(false)}
+                keyboardType="number-pad"
+                returnKeyType="done"
+                selectionColor="#ff003c"
+                textContentType="oneTimeCode"
+                autoComplete={
+                  Platform.OS === "android" ? "sms-otp" : "one-time-code"
+                }
+                maxLength={CELL_COUNT}
+                caretHidden
+              />
+              {codeDigits.map((digit, idx) => {
+                const isFocused =
+                  isCodeFocused &&
+                  (idx === Math.min(codeValue.length, CELL_COUNT - 1) ||
+                    (codeValue.length === CELL_COUNT && idx === CELL_COUNT - 1));
+                const hasValue = Boolean(digit);
+
+                return (
+                  <View
+                    key={idx}
+                    pointerEvents="none"
+                    style={[
+                      styles.codeCell,
+                      isFocused && styles.codeCellFocused,
+                      !isFocused && hasValue && styles.codeCellFilled,
+                    ]}
+                  >
+                    <Text style={styles.codeInput}>{digit}</Text>
+                  </View>
+                );
+              })}
+            </Pressable>
+            {codeError && <Text style={styles.error}>{codeError}</Text>}
+          </View>
+
           {/* password --------------------------------------------------- */}
           <Controller
             control={control}
@@ -111,6 +203,12 @@ export default function ResetPasswordScreen() {
                     onChangeText={onChange}
                     value={value}
                     returnKeyType="next"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="newPassword"
+                    autoComplete="new-password"
+                    selectionColor="#ff003c"
+                    onSubmitEditing={() => confirmPasswordRef.current?.focus()}
                   />
                   <TouchableOpacity
                     onPress={() => setShowPass((p) => !p)}
@@ -143,10 +241,17 @@ export default function ResetPasswordScreen() {
                     placeholder="Confirm password"
                     placeholderTextColor="#6b7280"
                     secureTextEntry={!showConfirm}
+                    ref={confirmPasswordRef}
                     onBlur={onBlur}
                     onChangeText={onChange}
                     value={value}
                     returnKeyType="done"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textContentType="newPassword"
+                    autoComplete="new-password"
+                    selectionColor="#ff003c"
+                    onSubmitEditing={handleSubmit(onValid)}
                   />
                   <TouchableOpacity
                     onPress={() => setShowConfirm((p) => !p)}
@@ -223,7 +328,7 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat-Medium",
   },
   inputGroup: {
-    marginBottom: 36,
+    marginBottom: 28,
   },
   label: {
     fontSize: 15,
@@ -241,6 +346,42 @@ const styles = StyleSheet.create({
     color: "#fff",
     backgroundColor: "#111827",
     fontFamily: "Nunito-Regular",
+  },
+  codeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    position: "relative",
+  },
+  hiddenCodeInput: {
+    position: "absolute",
+    opacity: 0,
+    width: 1,
+    height: 1,
+  },
+  codeCell: {
+    flex: 1,
+    height: 58,
+    borderWidth: 1,
+    borderColor: "#374151",
+    borderRadius: 12,
+    backgroundColor: "#111827",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  codeCellFocused: {
+    borderColor: "#ff003c",
+    borderWidth: 2,
+  },
+  codeCellFilled: {
+    borderColor: "#9ca3af",
+  },
+  codeInput: {
+    width: "100%",
+    fontSize: 24,
+    color: "#fff",
+    textAlign: "center",
+    fontFamily: "Nunito-Bold",
   },
   passwordRow: {
     flexDirection: "row",

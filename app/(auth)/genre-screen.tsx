@@ -1,5 +1,6 @@
 import { useProfile } from "@/api/auth/auth";
 import { useUpdateGenres } from "@/api/user/user";
+import { RFValue } from "@/utils/responsiveFont";
 import { Entypo, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -13,7 +14,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 /**

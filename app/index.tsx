@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { RFValue } from "@/utils/responsiveFont";
+import { getAccessToken } from "@/utils/authSession";
 import { router } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useState } from "react";
 import {
   Dimensions,
@@ -15,12 +16,10 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const { width, height } = Dimensions.get("window");
 const ONBOARD_KEY = "onboarding_complete";
-const ACCESS_KEY = "access_token";
 
 // ⬇️  Configure each onboarding step here
 const slides = [
@@ -104,7 +103,7 @@ export default function OnboardingScreen() {
       const onboarded = await AsyncStorage.getItem(ONBOARD_KEY);
       if (onboarded) {
         // Check for token
-        const token = await SecureStore.getItemAsync(ACCESS_KEY);
+        const token = await getAccessToken();
         if (token) {
           router.replace("/(tabs)/home");
         } else {

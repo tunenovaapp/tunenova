@@ -1,4 +1,3 @@
-import { PlayerProvider } from "@/components/PlayerContext";
 import { NotificationProvider } from "@/context/notificationsContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
@@ -63,22 +62,20 @@ export default function RootLayout() {
     <NotificationProvider>
       <GestureHandlerRootView>
         <QueryClientProvider client={queryClient}>
-          <PlayerProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: {
-                  backgroundColor: "#000",
-                },
-                animation: "slide_from_right",
-              }}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(auth)" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="(others)" />
-            </Stack>
-          </PlayerProvider>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: {
+                backgroundColor: "#000",
+              },
+              animation: "slide_from_right",
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(others)" />
+          </Stack>
           <StatusBar
             style="light"
             translucent={true}

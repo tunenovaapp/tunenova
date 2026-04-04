@@ -1,367 +1,443 @@
-// src/screens/ProfileScreen.tsx
 import { purgeTokens } from "@/api/apiclient";
 import { useProfile } from "@/api/auth/auth";
-import { useUpdateNotifications } from "@/api/user/user";
-import { useNotification } from "@/context/notificationsContext";
-import { Feather, Ionicons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
-import { router } from "expo-router";
-import React, { useState } from "react";
+import { useStats, useUpdateNotifications } from "@/api/user/user";
+import { ProfileAccountActions } from "@/components/profile/profile-account-actions";
+import { ProfileHero } from "@/components/profile/profile-hero";
 import {
-  ActivityIndicator,
+  ProfileNotificationCard,
+  ProfileNotificationFeedback,
+} from "@/components/profile/profile-notification-card";
+import { ProfilePreferenceCard } from "@/components/profile/profile-preference-card";
+import { ProfileMessageState, ProfileLoadingState } from "@/components/profile/profile-state";
+import {
+  ProfileMetric,
+  ProfileStatsGrid,
+} from "@/components/profile/profile-stats-grid";
+import { ProfileSupportCard } from "@/components/profile/profile-support-card";
+import { WalletReferralCard } from "@/components/wallet/wallet-referral-card";
+import { useNotification } from "@/context/notificationsContext";
+import { useQueryClient } from "@tanstack/react-query";
+import * as Clipboard from "expo-clipboard";
+import { Tabs, router } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Alert,
   Linking,
-  Modal,
+  RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
-  Switch,
   Text,
-  ToastAndroid,
-  TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
-import Animated, { FadeInRight } from "react-native-reanimated";
-import { RFValue } from "react-native-responsive-fontsize";
-import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, { FadeInUp } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-export default function ProfileScreen({ navigation }: any) {
-  const rows = [
-    {
-      id: "genres",
-      label: "Favorite Genres",
-      nav: "/(auth)/genre-screen" as const,
-      param: "back",
-    },
-    {
-      id: "platforms",
-      label: "Select Platform",
-      nav: "/(auth)/music-platform" as const,
-      param: "back",
-    },
-  ];
+const SUPPORT_EMAIL = "support@tunenova.com";
 
-  const { data: profileData, isLoading, isError } = useProfile();
-  const notificationsEnabled = profileData?.data?.notificationsEnabled ?? false;
-  const { expoPushToken } = useNotification();
-  const [notifEnabled, setNotifEnabled] = useState(notificationsEnabled);
+const GENRE_LABELS: Record<string, string> = {
+  afrobeats: "Afrobeats",
+  country: "Country",
+  gospel: "Gospel",
+  hiphop: "Hip-hop",
+  pop: "Pop",
+  rnb: "R&B",
+};
+
+const PLATFORM_LABELS: Record<string, string> = {
+  apple: "Apple Music",
+  "apple-music": "Apple Music",
+  audiomack: "Audiomack",
+  boomplay: "Boomplay",
+  deezer: "Deezer",
+  spotify: "Spotify",
+  tidal: "TIDAL",
+  youtube: "YouTube",
+};
+
+const formatLabel = (value: string) =>
+  value
+    .replace(/[-_]/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) =>
+      part.length <= 2 ? part.toUpperCase() : part[0].toUpperCase() + part.slice(1),
+    )
+    .join(" ");
+
+const formatNumber = (value: number) => Number(value).toLocaleString("en-NG");
+
+export default function ProfileScreen() {
+  const queryClient = useQueryClient();
+  const { bottom } = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 390;
+
   const {
-    mutate: updateNotifications,
-    isPending: notifPending,
-    isError: notifError,
-  } = useUpdateNotifications({
-    onError: (err) => {
-      ToastAndroid.show(
-        err?.response?.data?.error || "Failed to update notification settings.",
-        ToastAndroid.SHORT
-      );
-      setNotifEnabled((prev) => !prev); // revert
-    },
-  });
-  React.useEffect(() => {
+    data: profileData,
+    isLoading: isProfileLoading,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useProfile();
+  const {
+    data: statsData,
+    isLoading: isStatsLoading,
+    error: statsError,
+    refetch: refetchStats,
+  } = useStats();
+
+  const { expoPushToken, error: notificationError } = useNotification();
+  const profile = profileData?.data;
+  const notificationsEnabled = profile?.notificationsEnabled ?? false;
+
+  const [notifEnabled, setNotifEnabled] = useState(notificationsEnabled);
+  const [copied, setCopied] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [notificationFeedback, setNotificationFeedback] =
+    useState<ProfileNotificationFeedback | null>(null);
+
+  const { mutate: updateNotifications, isPending: notifPending } =
+    useUpdateNotifications({
+      onSuccess: (_data, variables) => {
+        setNotificationFeedback({
+          tone: "success",
+          text: variables.notificationsEnabled
+            ? "Notifications are enabled for this account."
+            : "Notifications have been turned off for this account.",
+        });
+      },
+      onError: (error) => {
+        setNotifEnabled((prev) => !prev);
+        setNotificationFeedback({
+          tone: "error",
+          text:
+            error?.response?.data?.error ||
+            "Failed to update notification settings. Please try again.",
+        });
+      },
+    });
+
+  useEffect(() => {
     setNotifEnabled(notificationsEnabled);
   }, [notificationsEnabled]);
 
-  const userName =
-    profileData?.data?.name || (isLoading ? "Loading..." : "User");
+  const stats = statsData ?? null;
+  const referralCode = profile?.referralCode || "";
+  const selectedGenres = useMemo(
+    () =>
+      (profile?.selectedGenres ?? []).map(
+        (genre) => GENRE_LABELS[genre] || formatLabel(genre),
+      ),
+    [profile?.selectedGenres],
+  );
+  const selectedPlatforms = useMemo(
+    () =>
+      (profile?.selectedPlatforms ?? []).map(
+        (platform) => PLATFORM_LABELS[platform] || formatLabel(platform),
+      ),
+    [profile?.selectedPlatforms],
+  );
 
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const summaryText =
+    selectedGenres.length || selectedPlatforms.length
+      ? `You have ${selectedGenres.length} ${selectedGenres.length === 1 ? "genre" : "genres"} and ${selectedPlatforms.length} ${selectedPlatforms.length === 1 ? "platform" : "platforms"} tuned for discovery.`
+      : "Set your favorite genres and streaming platforms to personalize the Tunenova experience.";
 
-  // Placeholder for delete account logic
-  const handleDeleteAccount = async () => {
-    setDeleting(true);
+  const metrics = useMemo<ProfileMetric[]>(
+    () => [
+      {
+        icon: "play-outline",
+        label: "Listens",
+        value: formatNumber(stats?.listens ?? 0),
+        accent: "#1F0E16",
+      },
+      {
+        icon: "compass-outline",
+        label: "Discoveries",
+        value: formatNumber(stats?.discoveries ?? 0),
+        accent: "#132238",
+      },
+      {
+        icon: "people-outline",
+        label: "Referrals",
+        value: formatNumber(stats?.referrals ?? 0),
+        accent: "#0D1F16",
+      },
+      {
+        icon: "megaphone-outline",
+        label: "Campaigns",
+        value: formatNumber(stats?.campaignsCreated ?? 0),
+        accent: "#1F1A0D",
+      },
+    ],
+    [
+      stats?.campaignsCreated,
+      stats?.discoveries,
+      stats?.listens,
+      stats?.referrals,
+    ],
+  );
+
+  const effectiveNotificationFeedback = notificationFeedback
+    ? notificationFeedback
+    : notificationError
+      ? {
+          tone: "info" as const,
+          text:
+            notificationError.message ||
+            "Push registration is not fully available on this device yet.",
+        }
+      : null;
+
+  const openMail = useCallback(async (subject: string, body: string) => {
+    const url = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
     try {
-      // TODO: Replace with actual delete account API call
-      // await deleteAccount();
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert(
+        "Could not open mail",
+        `Please send your request manually to ${SUPPORT_EMAIL}.`,
+      );
+    }
+  }, []);
+
+  const handleCopyReferral = useCallback(async () => {
+    if (!referralCode) {
+      return;
+    }
+
+    await Clipboard.setStringAsync(referralCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+  }, [referralCode]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.allSettled([refetchProfile(), refetchStats()]);
+    setRefreshing(false);
+  }, [refetchProfile, refetchStats]);
+
+  const handleNotificationToggle = useCallback(
+    (value: boolean) => {
+      setNotificationFeedback(null);
+      setNotifEnabled(value);
+      updateNotifications({
+        notificationsEnabled: value,
+        expoPushToken: expoPushToken || profile?.expoPushToken || "",
+      });
+    },
+    [expoPushToken, profile?.expoPushToken, updateNotifications],
+  );
+
+  const handleLogout = useCallback(async () => {
+    setLoggingOut(true);
+    try {
+      queryClient.clear();
       await purgeTokens();
       router.replace("/(auth)/login");
-    } catch (e) {
-      // Optionally handle error
     } finally {
-      setDeleting(false);
-      setDeleteModalVisible(false);
+      setLoggingOut(false);
     }
-  };
-  const queryClient = useQueryClient();
+  }, [queryClient]);
+
+  const handleSupport = useCallback(() => {
+    openMail(
+      "Support Request",
+      `Hi Tunenova Support,\n\nI need help with:\n\nAccount email: ${profile?.email || ""}\nUser ID: ${profile?.id || ""}\n`,
+    );
+  }, [openMail, profile?.email, profile?.id]);
+
+  const handleRequestDeletion = useCallback(() => {
+    openMail(
+      "Account Deletion Request",
+      `Hi Tunenova Support,\n\nI would like to request deletion of my account.\n\nName: ${profile?.name || ""}\nEmail: ${profile?.email || ""}\nUser ID: ${profile?.id || ""}\nReferral code: ${profile?.referralCode || ""}\n`,
+    );
+  }, [openMail, profile?.email, profile?.id, profile?.name, profile?.referralCode]);
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" />
+    <>
+      <Tabs.Screen
+        options={{
+          headerShown: true,
+          title: "Me",
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: "#05070A" },
+          headerTintColor: "#FFFFFF",
+          headerTitleStyle: { fontFamily: "Nunito-Bold", fontSize: 18 },
+        }}
+      />
 
-      {/* -------------------- Header (avatar + name) -------------------- */}
-      <View style={styles.header}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text style={styles.name}>{userName}</Text>
-          <Ionicons
-            name="checkmark-circle-sharp"
-            size={20}
-            color="#fff"
-          />
-        </View>
-      </View>
+      <View style={styles.screen}>
+        <StatusBar barStyle="light-content" />
 
-      {/* -------------------- Settings rows ---------------------------- */}
-      {rows.map((row, i) => (
-        <Animated.View
-          key={row.id}
-          entering={FadeInRight.delay(i * 70)}
-        >
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={styles.row}
-            onPress={() =>
-              router.push({ pathname: row.nav, params: { param: row.param } })
-            }
-          >
-            <Text style={styles.rowLabel}>{row.label}</Text>
-            <Feather
-              name="chevron-right"
-              size={20}
-              color="#fff"
+        <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#ff003c"
+              colors={["#ff003c"]}
             />
-          </TouchableOpacity>
-        </Animated.View>
-      ))}
+          }
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: bottom + 44 },
+          ]}
+        >
+          {isProfileLoading && !profile ? (
+            <ProfileLoadingState compact={isCompact} />
+          ) : profileError && !profile ? (
+            <ProfileMessageState
+              title="Could not load your account"
+              description={
+                profileError.message ||
+                "Your profile is temporarily unavailable. Pull to refresh or retry."
+              }
+              actionLabel="Retry"
+              onAction={handleRefresh}
+            />
+          ) : (
+            <>
+              <Animated.View entering={FadeInUp.duration(260)}>
+                <ProfileHero
+                  name={profile?.name?.trim() || "Tunenova User"}
+                  email={profile?.email || "Email unavailable"}
+                  verified={Boolean(profile?.emailVerified)}
+                  summary={summaryText}
+                  genresCount={selectedGenres.length}
+                  platformsCount={selectedPlatforms.length}
+                />
+              </Animated.View>
 
-      {/* -------------------- Enable Notifications Switch ------------- */}
-      <View style={styles.row}>
-        <Text style={styles.rowLabel}>Enable Notifications</Text>
-        {notifPending ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Switch
-            value={notifEnabled}
-            onValueChange={(val) => {
-              setNotifEnabled(val);
-              updateNotifications({
-                notificationsEnabled: val,
-                expoPushToken: expoPushToken || "",
-              });
-            }}
-            thumbColor={notifEnabled ? "#E10032" : "#888"}
-            trackColor={{ true: "#E10032", false: "#333" }}
-            disabled={notifPending}
-          />
-        )}
+              <Animated.View entering={FadeInUp.delay(60).duration(260)}>
+                <ProfileStatsGrid
+                  metrics={metrics}
+                  isLoading={isStatsLoading}
+                  errorText={
+                    statsError && !stats
+                      ? statsError.message ||
+                        "We could not refresh your listening stats."
+                      : null
+                  }
+                  onRetry={() => refetchStats()}
+                />
+              </Animated.View>
+
+              <Animated.View entering={FadeInUp.delay(120).duration(260)}>
+                <WalletReferralCard
+                  referralCode={referralCode}
+                  copied={copied}
+                  isLoading={isProfileLoading}
+                  onCopy={handleCopyReferral}
+                />
+              </Animated.View>
+
+              <Animated.View entering={FadeInUp.delay(180).duration(260)}>
+                <View style={styles.section}>
+                  <View style={styles.sectionCopy}>
+                    <Text style={styles.sectionTitle}>Preferences</Text>
+                    <Text style={styles.sectionDescription}>
+                      Review and adjust the genres and streaming platforms that
+                      shape your listening and campaign experience.
+                    </Text>
+                  </View>
+
+                  <View style={styles.stack}>
+                    <ProfilePreferenceCard
+                      title="Favorite genres"
+                      description="Used to tailor what feels relevant across discovery and onboarding."
+                      icon="albums-outline"
+                      values={selectedGenres}
+                      emptyLabel="No genres selected yet"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(auth)/genre-screen",
+                          params: { param: "back" },
+                        })
+                      }
+                    />
+
+                    <ProfilePreferenceCard
+                      title="Streaming platforms"
+                      description="These platforms influence where campaign discovery flows are pointed."
+                      icon="radio-outline"
+                      values={selectedPlatforms}
+                      emptyLabel="No platforms selected yet"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(auth)/music-platform",
+                          params: { param: "back" },
+                        })
+                      }
+                    />
+                  </View>
+                </View>
+              </Animated.View>
+
+              <Animated.View entering={FadeInUp.delay(240).duration(260)}>
+                <ProfileNotificationCard
+                  value={notifEnabled}
+                  pending={notifPending}
+                  onChange={handleNotificationToggle}
+                  feedback={effectiveNotificationFeedback}
+                />
+              </Animated.View>
+
+              <Animated.View entering={FadeInUp.delay(300).duration(260)}>
+                <ProfileSupportCard
+                  supportEmail={SUPPORT_EMAIL}
+                  onPress={handleSupport}
+                />
+              </Animated.View>
+
+              <Animated.View entering={FadeInUp.delay(360).duration(260)}>
+                <ProfileAccountActions
+                  logoutPending={loggingOut}
+                  onLogout={handleLogout}
+                  onRequestDeletion={handleRequestDeletion}
+                />
+              </Animated.View>
+            </>
+          )}
+        </ScrollView>
       </View>
-
-      <TouchableOpacity
-        style={styles.logoutBtn}
-        activeOpacity={0.9}
-        onPress={async () => {
-          queryClient.clear();
-          // Clear any cached data
-          queryClient.removeQueries();
-          // Optionally clear local storage or other caches
-          await purgeTokens();
-          router.replace("/(auth)/login");
-        }}
-      >
-        <Text style={styles.logoutTxt}>Logout</Text>
-      </TouchableOpacity>
-
-      {/* -------------------- Delete Account Button -------------------- */}
-      <TouchableOpacity
-        style={styles.deleteBtn}
-        activeOpacity={0.9}
-        onPress={() => setDeleteModalVisible(true)}
-      >
-        <Text style={styles.deleteTxt}>Delete Account</Text>
-      </TouchableOpacity>
-
-      {/* -------------------- Delete Confirmation Modal ---------------- */}
-      <Modal
-        visible={deleteModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDeleteModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Delete Account?</Text>
-            <Text style={styles.modalMsg}>
-              Are you sure you want to delete your account? This action cannot
-              be undone.
-            </Text>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "flex-end",
-                gap: 12,
-                marginTop: 24,
-              }}
-            >
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setDeleteModalVisible(false)}
-                disabled={deleting}
-              >
-                <Text style={styles.modalCancelTxt}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalDeleteBtn}
-                onPress={handleDeleteAccount}
-                disabled={deleting}
-              >
-                <Text style={styles.modalDeleteTxt}>
-                  {deleting ? "Deleting..." : "Delete"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* -------------------- "Tell us" Card --------------------------- */}
-      <TouchableOpacity
-        style={styles.reportCard}
-        activeOpacity={0.9}
-        onPress={() => {
-          // Open mail app to send email to support@hallatechnologies.com
-          Linking.openURL(
-            "mailto:support@tunenova.com?subject=Support%20Request"
-          );
-        }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Feather
-            name="flag"
-            size={18}
-            color="#fff"
-          />
-          <Text style={styles.reportTxt}>Something wrong? Tell Us</Text>
-        </View>
-        <Feather
-          name="chevron-right"
-          size={18}
-          color="#fff"
-        />
-      </TouchableOpacity>
-    </SafeAreaView>
+    </>
   );
 }
 
-/* ----------------------------- Styles ------------------------------- */
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#000" },
-
-  header: {
-    alignItems: "center",
-    marginTop: 32,
-    marginBottom: 40,
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 10,
-  },
-
-  name: { fontSize: RFValue(24), fontFamily: "Nunito-Medium", color: "#fff" },
-
-  row: {
-    backgroundColor: "#111",
-    marginBottom: 10,
-    borderRadius: 12,
-    paddingVertical: 20,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  rowLabel: {
-    color: "#fff",
-    fontSize: RFValue(16),
-    fontFamily: "Montserrat-Medium",
-  },
-
-  reportCard: {
-    marginTop: "auto",
-    marginBottom: 10,
-    borderRadius: 12,
-    backgroundColor: "#111",
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  reportTxt: { color: "#fff", fontSize: RFValue(15), flexShrink: 1 },
-
-  logoutBtn: {
-    marginTop: 24,
-    marginBottom: 12,
-    borderRadius: 12,
-    backgroundColor: "#E10032",
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: 24,
-  },
-  logoutTxt: {
-    color: "#fff",
-    fontSize: RFValue(16),
-    fontFamily: "Nunito-Medium",
-  },
-  deleteBtn: {
-    marginBottom: 24,
-    borderRadius: 12,
-    backgroundColor: "#222",
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    marginHorizontal: 24,
-    borderWidth: 1,
-    borderColor: "#E10032",
-  },
-  deleteTxt: {
-    color: "#E10032",
-    fontSize: RFValue(16),
-    fontFamily: "Nunito-Medium",
-  },
-  modalOverlay: {
+  screen: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: "#05070A",
   },
-  modalContent: {
-    backgroundColor: "#181818",
-    borderRadius: 16,
-    padding: 28,
-    width: "80%",
-    alignItems: "flex-start",
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 16,
   },
-  modalTitle: {
-    color: "#fff",
-    fontSize: RFValue(18),
+  section: {
+    gap: 12,
+  },
+  sectionCopy: {
+    gap: 4,
+  },
+  sectionTitle: {
+    color: "#FFFFFF",
+    fontSize: 22,
     fontFamily: "Nunito-Bold",
-    marginBottom: 8,
   },
-  modalMsg: {
-    color: "#fff",
-    fontSize: RFValue(15),
+  sectionDescription: {
+    color: "#94A3B8",
+    fontSize: 13,
+    lineHeight: 19,
     fontFamily: "Nunito-Regular",
   },
-  modalCancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#333",
-  },
-  modalCancelTxt: {
-    color: "#fff",
-    fontSize: RFValue(15),
-    fontFamily: "Nunito-Medium",
-  },
-  modalDeleteBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: "#E10032",
-    marginLeft: 8,
-  },
-  modalDeleteTxt: {
-    color: "#fff",
-    fontSize: RFValue(15),
-    fontFamily: "Nunito-Medium",
+  stack: {
+    gap: 12,
   },
 });

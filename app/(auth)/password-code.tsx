@@ -1,11 +1,11 @@
-import { useNavigation } from "@react-navigation/native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -13,12 +13,6 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
 
 /**
  * ---------------------------------------------------------------------------
@@ -35,112 +29,56 @@ import Animated, {
 const { width } = Dimensions.get("window");
 const CELL_SIZE = Math.min(70, width / 6);
 const CELL_COUNT = 4;
-const RESEND_SECONDS = 60;
-
-function CodeCell({
-  idx,
-  value,
-  onFocus,
-  onBlur,
-  onChangeText,
-  onKeyPress,
-  inputRef,
-  focusedIdx,
-}: {
-  idx: number;
-  value: string;
-  onFocus: () => void;
-  onBlur: () => void;
-  onChangeText: (t: string) => void;
-  onKeyPress: (e: any) => void;
-  inputRef: (ref: TextInput | null) => void;
-  focusedIdx: number;
-}) {
-  const isFocused = focusedIdx === idx;
-  const rCell = useAnimatedStyle(() => {
-    const scale = withTiming(isFocused ? 1.05 : 1, { duration: 200 });
-    const bw = withTiming(isFocused ? 2 : 1, { duration: 200 });
-    return {
-      transform: [{ scale }],
-      borderWidth: bw,
-    };
-  }, [isFocused]);
-  return (
-    <Animated.View style={[styles.codeCell, rCell]}>
-      <TextInput
-        ref={inputRef}
-        style={styles.codeInput}
-        keyboardType="number-pad"
-        maxLength={1}
-        value={value}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        onChangeText={onChangeText}
-        onKeyPress={onKeyPress}
-        returnKeyType={idx === CELL_COUNT - 1 ? "done" : "next"}
-      />
-    </Animated.View>
-  );
-}
 
 export default function AccountVerificationScreen() {
-  const navigation = useNavigation();
   const router = useRouter();
-  const { email } = useLocalSearchParams();
 
-  // -------------------------------------------------------------------------
-  const [code, setCode] = useState<string[]>(Array(CELL_COUNT).fill(""));
-  const [timer, setTimer] = useState(RESEND_SECONDS);
-  const [message, setMessage] = useState<string | null>(null);
-  const refs = useRef<TextInput[]>([]);
-
-  // Reanimated values -------------------------------------------------------
-  const focusedIdx = useSharedValue(-1);
-
-  // countdown ---------------------------------------------------------------
-  useEffect(() => {
-    if (timer === 0) return;
-    const id = setInterval(() => setTimer((t) => t - 1), 1000);
-    return () => clearInterval(id);
-  }, [timer]);
-
-  // helpers -----------------------------------------------------------------
-  const updateDigit = useCallback(
-    (digit: string, idx: number) => {
-      const newCode = [...code];
-
-      if (digit.length > 1) {
-        const chars = digit.slice(0, CELL_COUNT).split("");
-        for (let i = 0; i < CELL_COUNT; i++) newCode[i] = chars[i] || "";
-        setCode(newCode);
-        const filled = chars.filter(Boolean).length === CELL_COUNT;
-        if (filled) handleComplete(chars.join(""));
-        else refs.current[chars.filter(Boolean).length]?.focus();
-        return;
-      }
-
-      newCode[idx] = digit;
-      setCode(newCode);
-      if (digit && idx < CELL_COUNT - 1) refs.current[idx + 1]?.focus();
-      if (newCode.every((c) => c !== "")) handleComplete(newCode.join(""));
-    },
+  const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [isCodeFocused, setIsCodeFocused] = useState(false);
+  const inputRef = useRef<TextInput | null>(null);
+  const codeDigits = useMemo(
+    () => Array.from({ length: CELL_COUNT }, (_, idx) => code[idx] ?? ""),
     [code]
   );
 
-  const handleKeyPress = (e: any, idx: number) => {
-    if (e.nativeEvent.key === "Backspace" && code[idx] === "" && idx > 0) {
-      refs.current[idx - 1]?.focus();
-    }
-  };
+  useEffect(() => {
+    inputRef.current?.focus();
+    setIsCodeFocused(true);
+  }, []);
 
-  const handleComplete = (full: string) => {
+  const handleComplete = useCallback((full: string) => {
+    Keyboard.dismiss();
     router.push({
       pathname: "/(auth)/reset-password",
       params: { code: full },
     });
-  };
+  }, [router]);
 
- 
+  const handleCodeChange = useCallback(
+    (value: string) => {
+      const sanitized = value.replace(/\D/g, "").slice(0, CELL_COUNT);
+
+      setCodeError(null);
+      setCode(sanitized);
+
+      if (sanitized.length === CELL_COUNT) {
+        handleComplete(sanitized);
+      }
+    },
+    [handleComplete]
+  );
+
+  const handleContinue = () => {
+    if (code.length !== CELL_COUNT) {
+      setCodeError("Enter the 4-digit reset code.");
+      inputRef.current?.focus();
+      setIsCodeFocused(true);
+      return;
+    }
+
+    handleComplete(code);
+  };
 
   // -------------------------------------------------------------------------
   return (
@@ -157,34 +95,63 @@ export default function AccountVerificationScreen() {
           </Text>
 
           {/* code cells -------------------------------------------------- */}
-          <View style={styles.codeRow}>
-            {Array.from({ length: CELL_COUNT }).map((_, idx) => (
-              <CodeCell
-                key={idx}
-                idx={idx}
-                value={code[idx]}
-                onFocus={() => (focusedIdx.value = idx)}
-                onBlur={() => (focusedIdx.value = -1)}
-                onChangeText={(t) => updateDigit(t.replace(/[^0-9]/g, ""), idx)}
-                onKeyPress={(e) => handleKeyPress(e, idx)}
-                inputRef={(ref) => {
-                  refs.current[idx] = ref!;
-                }}
-                focusedIdx={focusedIdx.value}
-              />
-            ))}
-          </View>
+          <Pressable
+            style={styles.codeRow}
+            onPress={() => {
+              inputRef.current?.focus();
+              setIsCodeFocused(true);
+            }}
+          >
+            <TextInput
+              ref={inputRef}
+              style={styles.hiddenCodeInput}
+              value={code}
+              onChangeText={handleCodeChange}
+              onFocus={() => setIsCodeFocused(true)}
+              onBlur={() => setIsCodeFocused(false)}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              selectionColor="#ff003c"
+              textContentType="oneTimeCode"
+              autoComplete={
+                Platform.OS === "android" ? "sms-otp" : "one-time-code"
+              }
+              maxLength={CELL_COUNT}
+              caretHidden
+            />
+            {codeDigits.map((digit, idx) => {
+              const isFocused =
+                isCodeFocused &&
+                (idx === Math.min(code.length, CELL_COUNT - 1) ||
+                  (code.length === CELL_COUNT && idx === CELL_COUNT - 1));
+              const hasValue = Boolean(digit);
 
-          {/* resend ------------------------------------------------------ */}
+              return (
+                <View
+                  key={idx}
+                  pointerEvents="none"
+                  style={[
+                    styles.codeCell,
+                    isFocused && styles.codeCellFocused,
+                    !isFocused && hasValue && styles.codeCellFilled,
+                  ]}
+                >
+                  <Text style={styles.codeInput}>{digit}</Text>
+                </View>
+              );
+            })}
+          </Pressable>
+          {codeError && <Text style={styles.error}>{codeError}</Text>}
 
           {/* verify button ---------------------------------------------- */}
           <TouchableOpacity
             style={[
               styles.button,
-              code.every(Boolean) ? null : { opacity: 0.5 },
+              code.length === CELL_COUNT ? null : { opacity: 0.5 },
             ]}
+            disabled={code.length !== CELL_COUNT}
             activeOpacity={0.9}
-            onPress={() => handleComplete(code.join(""))}
+            onPress={handleContinue}
           >
             <Text style={styles.buttonText}>Reset Password</Text>
           </TouchableOpacity>
@@ -235,26 +202,45 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     width: "100%",
-    marginBottom: 32,
+    gap: 12,
+    marginBottom: 12,
+    position: "relative",
+  },
+  hiddenCodeInput: {
+    position: "absolute",
+    opacity: 0,
+    width: 1,
+    height: 1,
   },
   codeCell: {
     width: CELL_SIZE,
     height: CELL_SIZE,
-    borderRadius: 10,
-    borderColor: "#4b5563",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#374151",
     backgroundColor: "#111827",
     justifyContent: "center",
     alignItems: "center",
   },
+  codeCellFocused: {
+    borderColor: "#ff003c",
+    borderWidth: 2,
+  },
+  codeCellFilled: {
+    borderColor: "#9ca3af",
+  },
   codeInput: {
+    width: "100%",
     fontSize: 28,
     color: "#fff",
     textAlign: "center",
-    fontFamily: "Montserrat-Medium",
+    fontFamily: "Nunito-Bold",
   },
-  resendText: {
-    color: "#fff",
-    marginBottom: 64,
+  error: {
+    width: "100%",
+    color: "#f43f5e",
+    marginBottom: 20,
+    fontSize: 12,
     fontFamily: "Nunito-Regular",
   },
   button: {

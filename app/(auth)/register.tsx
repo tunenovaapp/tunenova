@@ -1,4 +1,5 @@
 import { useRegister } from "@/api/auth/auth";
+import { RFValue } from "@/utils/responsiveFont";
 import { Ionicons } from "@expo/vector-icons";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useRouter } from "expo-router";
@@ -28,7 +29,6 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { RFValue } from "react-native-responsive-fontsize";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as yup from "yup";
 

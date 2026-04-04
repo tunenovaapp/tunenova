@@ -1,4 +1,5 @@
 import { useLogin } from "@/api/auth/auth";
+import { RFValue } from "@/utils/responsiveFont";
 import { Ionicons } from "@expo/vector-icons";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useNavigation } from "@react-navigation/native";
@@ -17,7 +18,6 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { RFValue } from "react-native-responsive-fontsize";
 import * as yup from "yup";
 
 /**
