@@ -9,10 +9,12 @@ import { HomeUploadSheet } from "@/components/home/home-upload-sheet";
 import { NowPlayingCard } from "@/components/home/now-playing-card";
 import { usePlayer } from "@/components/PlayerContext";
 import { useNotification } from "@/context/notificationsContext";
+import { useInboxNotifications } from "@/hooks/useInboxNotifications";
 import { RFValue } from "@/utils/responsiveFont";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { useAudioPlayerStatus } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -40,7 +42,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import {
+import Animated, {
   Easing,
   runOnJS,
   useAnimatedStyle,
@@ -54,7 +56,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const LISTEN_COMPLETION_SECONDS = 20;
 const TRACK_LOADING_TIMEOUT_MS = 12_000;
-const DEFAULT_HERO = require("../../assets/images/Asset 2@4x-8.png");
+const DEFAULT_HERO = require("../../assets/images/hero-default.png");
 const HOME_TIPS = [
   "Earn cash instantly when you listen to songs with the sponsored tag.",
   "Tap the artwork to pause or resume the track currently playing.",
@@ -262,6 +264,7 @@ async function openExternalUrl(url: string) {
 
 export default function ExplorePlayerScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const playerFrameWidth = Math.min(width - 40, 460);
   const cardArtworkHeight = Math.min(
@@ -300,11 +303,14 @@ export default function ExplorePlayerScreen() {
   const previousPlaybackSnapshot = useRef<PlaybackSnapshot | null>(null);
   const trackChangeState = useRef<TrackChangeState | null>(null);
   const tipsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fabIdleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fabEnabledRef = useRef(true);
 
   const [showFeedbackSheet, setShowFeedbackSheet] = useState(false);
   const [showTipsModal, setShowTipsModal] = useState(false);
   const [currentTipIdx, setCurrentTipIdx] = useState(0);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [isFabEnabled, setIsFabEnabled] = useState(true);
   const [pickedAudio, setPickedAudio] = useState<PickedAudio | null>(null);
   const [musicUrl, setMusicUrl] = useState("");
   const [currentAdvertSlot, setCurrentAdvertSlot] = useState(-1);
@@ -318,6 +324,12 @@ export default function ExplorePlayerScreen() {
   const greetingName =
     profileData?.data?.name?.trim()?.split(/\s+/)[0] || "Creator";
   const { data: listenerCount } = useVerifiedUsersCount();
+  const { data: inboxData } = useInboxNotifications();
+  const unreadNotificationCount = inboxData?.unread.length ?? 0;
+
+  const handleOpenNotifications = useCallback(() => {
+    router.push("/(others)/notifications");
+  }, [router]);
   const { expoPushToken } = useNotification();
   const {
     mutate: updateNotifications,
@@ -751,6 +763,10 @@ export default function ExplorePlayerScreen() {
 
       console.log("Create free campaign response:", response);
     } catch (error: any) {
+      Alert.alert(
+        "Upload Failed",
+        "Ensure you've created a paid campaign within the last 7 days."
+      );
       console.error("Create free campaign failed:", error?.payload || error);
 
       const message =
@@ -838,12 +854,21 @@ export default function ExplorePlayerScreen() {
 
     setIsOpeningSponsor(true);
 
+    const advertId = activeAdvert?.id;
+    if (advertId != null) {
+      try {
+        await api.post(`/adverts/${advertId}/click`);
+      } catch (error) {
+        console.warn("Failed to record advert click:", error);
+      }
+    }
+
     try {
       await openExternalUrl(currentAdvertUrl);
     } finally {
       setIsOpeningSponsor(false);
     }
-  }, [currentAdvertUrl, isAudioLoading, isOpeningSponsor]);
+  }, [activeAdvert?.id, currentAdvertUrl, isAudioLoading, isOpeningSponsor]);
 
   useEffect(() => {
     if (!campaign?.id) {
@@ -1007,6 +1032,56 @@ export default function ExplorePlayerScreen() {
   const showEmptyState = !isLoading && (!campaigns.length || !campaign);
   const bottomFabOffset = insets.bottom + 25;
 
+  const fabOpacity = useSharedValue(1);
+  const fabAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: fabOpacity.value,
+    transform: [{ scale: 0.98 + 0.02 * fabOpacity.value }],
+  }));
+
+  const enableFab = useCallback(() => {
+    if (!fabEnabledRef.current) {
+      fabEnabledRef.current = true;
+      setIsFabEnabled(true);
+    }
+  }, []);
+
+  const showFab = useCallback(() => {
+    enableFab();
+    fabOpacity.value = withTiming(1, { duration: 160 });
+  }, [enableFab, fabOpacity]);
+
+  const scheduleFabHide = useCallback(() => {
+    if (fabIdleTimeout.current) {
+      clearTimeout(fabIdleTimeout.current);
+      fabIdleTimeout.current = null;
+    }
+
+    fabIdleTimeout.current = setTimeout(() => {
+      fabOpacity.value = withTiming(0, { duration: 260 });
+      setTimeout(() => {
+        fabEnabledRef.current = false;
+        setIsFabEnabled(false);
+      }, 280);
+    }, 1600);
+  }, [fabOpacity]);
+
+  useEffect(() => {
+    showFab();
+    scheduleFabHide();
+
+    return () => {
+      if (fabIdleTimeout.current) {
+        clearTimeout(fabIdleTimeout.current);
+        fabIdleTimeout.current = null;
+      }
+    };
+  }, [scheduleFabHide, showFab]);
+
+  const handleHomeScroll = useCallback(() => {
+    showFab();
+    scheduleFabHide();
+  }, [scheduleFabHide, showFab]);
+
   return (
     <View style={styles.screen}>
       <LinearGradient
@@ -1029,10 +1104,12 @@ export default function ExplorePlayerScreen() {
         style={styles.scroll}
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={handleHomeScroll}
         contentContainerStyle={[
           styles.scrollContent,
           {
-            paddingTop: 10,
+            paddingTop: insets.top + 10,
             paddingBottom: bottomFabOffset,
           },
         ]}
@@ -1050,6 +1127,8 @@ export default function ExplorePlayerScreen() {
           <HomeHeader
             greetingName={greetingName}
             listenerCount={listenerCount}
+            onPressNotifications={handleOpenNotifications}
+            unreadNotificationCount={unreadNotificationCount}
           />
 
           <View style={styles.heroSection}>
@@ -1100,36 +1179,40 @@ export default function ExplorePlayerScreen() {
                 color="#FF5177"
               />
               <Text style={styles.supportText}>
-                Sponsored listens can unlock both cash and rewards.
+                Listens can unlock both cash and rewards.
               </Text>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      <TouchableOpacity
-        activeOpacity={0.92}
-        accessibilityRole="button"
-        accessibilityLabel="Add track"
-        onPress={handleOpenUploadSheet}
-        style={[styles.fabWrap, { bottom: bottomFabOffset }]}
+      <Animated.View
+        pointerEvents={isFabEnabled ? "auto" : "none"}
+        style={[styles.fabWrap, { bottom: bottomFabOffset }, fabAnimatedStyle]}
       >
-        <LinearGradient
-          colors={["#FF214F", "#B30D2D"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.fab}
+        <TouchableOpacity
+          activeOpacity={0.92}
+          accessibilityRole="button"
+          accessibilityLabel="Add track"
+          onPress={handleOpenUploadSheet}
         >
-          <View style={styles.fabIcon}>
-            <Ionicons
-              name="add"
-              size={20}
-              color="#fff"
-            />
-          </View>
-          <Text style={styles.fabText}>Add Track</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+          <LinearGradient
+            colors={["#FF214F", "#B30D2D"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.fab}
+          >
+            <View style={styles.fabIcon}>
+              <Ionicons
+                name="add"
+                size={20}
+                color="#fff"
+              />
+            </View>
+            <Text style={styles.fabText}>Add Track</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
 
       <HomeFeedbackSheet
         visible={showFeedbackSheet}

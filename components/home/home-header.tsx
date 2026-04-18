@@ -3,11 +3,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 type HomeHeaderProps = {
   greetingName: string;
   listenerCount?: number | null;
+  onPressNotifications?: () => void;
+  unreadNotificationCount?: number;
 };
 
 const formatListenerCount = (value?: number | null) => {
@@ -29,8 +31,12 @@ const formatListenerCount = (value?: number | null) => {
 export function HomeHeader({
   greetingName,
   listenerCount,
+  onPressNotifications,
+  unreadNotificationCount = 0,
 }: HomeHeaderProps) {
   const socialProof = formatListenerCount(listenerCount);
+  const showBadge =
+    typeof onPressNotifications === "function" && unreadNotificationCount > 0;
 
   return (
     <View style={styles.container}>
@@ -42,30 +48,69 @@ export function HomeHeader({
           contentPosition="left"
         />
 
-        <View style={styles.greetingBlock}>
-          <Text style={styles.kicker}>Now playing</Text>
+        {onPressNotifications ? (
+          <Pressable
+            onPress={onPressNotifications}
+            style={({ pressed }) => [
+              styles.notifButton,
+              pressed && styles.notifButtonPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`Notifications${
+              unreadNotificationCount > 0
+                ? `, ${unreadNotificationCount} unread`
+                : ""
+            }`}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={24}
+              color="#fff"
+            />
+            {showBadge ? (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>
+                  {unreadNotificationCount > 9
+                    ? "9+"
+                    : String(unreadNotificationCount)}
+                </Text>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : (
           <Text style={styles.greeting}>Hey {greetingName}</Text>
-        </View>
+        )}
       </View>
 
       <View style={styles.metaRow}>
-        <LinearGradient
-          colors={["#2B0C14", "#111114"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.listenerChip}
-        >
-          <Ionicons
-            name="headset-outline"
-            size={18}
-            color="#fff"
-          />
-          <Text style={styles.listenerValue}>{socialProof}</Text>
-          <Text style={styles.listenerLabel}>listeners</Text>
-        </LinearGradient>
+        <View style={styles.metaRowTop}>
+          <LinearGradient
+            colors={["#2B0C14", "#111114"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.listenerChip}
+          >
+            <Ionicons
+              name="headset-outline"
+              size={18}
+              color="#fff"
+            />
+            <Text style={styles.listenerValue}>{socialProof}</Text>
+            <Text style={styles.listenerLabel}>listeners</Text>
+          </LinearGradient>
+
+          {onPressNotifications ? (
+            <Text
+              style={styles.greetingMeta}
+              numberOfLines={2}
+            >
+              Hey {greetingName}
+            </Text>
+          ) : null}
+        </View>
 
         <Text style={styles.helperText}>
-          Sponsored tracks can pay you when you listen and discover.
+          Sponsored songs pay instantly. Listen and earn points that convert to cash monthly.
         </Text>
       </View>
     </View>
@@ -82,31 +127,67 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 16,
   },
+  metaRowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  notifButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  notifButtonPressed: {
+    opacity: 0.85,
+  },
+  notifBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: "#E11D48",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notifBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontFamily: "Nunito-Bold",
+    fontVariant: ["tabular-nums"],
+  },
   logo: {
     width: 120,
     height: 40,
-  },
-  greetingBlock: {
-    alignItems: "flex-end",
-    gap: 2,
-  },
-  kicker: {
-    color: "#7a7a86",
-    fontFamily: "Nunito-Regular",
-    fontSize: RFValue(11),
-    textTransform: "uppercase",
-    letterSpacing: 1.3,
   },
   greeting: {
     color: "#fff",
     fontFamily: "RedditSans-Bold",
     fontSize: RFValue(20),
+    textAlign: "right",
+    flexShrink: 1,
+  },
+  greetingMeta: {
+    color: "#fff",
+    fontFamily: "RedditSans-Bold",
+    fontSize: RFValue(20),
+    textAlign: "right",
+    flexShrink: 1,
+    marginLeft: 12,
   },
   metaRow: {
     gap: 12,
   },
   listenerChip: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -115,6 +196,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
+    flexShrink: 0,
   },
   listenerValue: {
     color: "#fff",

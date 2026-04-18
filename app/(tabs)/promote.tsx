@@ -235,10 +235,10 @@ export default function PromoteScreen() {
           "Pay directly from your Tunenova wallet for instant confirmation.",
       },
       ...couponOptions.map((coupon) => ({
-        label: "Campaign balance",
+        label: "Coupon balance",
         value: coupon.value,
         detail: formatCurrency(Number(coupon.balance)),
-        helper: "Use saved campaign credit before your wallet is touched.",
+        helper: "Use Coupon balance before your wallet is touched.",
       })),
     ],
     [couponOptions, isBalanceLoading, walletBalance],
@@ -472,7 +472,7 @@ export default function PromoteScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.content,
-            { paddingTop: 10, paddingBottom: bottom + 210 },
+            { paddingTop: top + 10, paddingBottom: bottom + 10 },
           ]}
         >
           <View style={styles.hero}>
@@ -636,7 +636,7 @@ export default function PromoteScreen() {
                     <TextField
                       ref={budgetRef}
                       label="Budget"
-                      placeholder="Minimum \u20A61,000"
+                      placeholder="Minimum NGN 1,000"
                       keyboardType="numeric"
                       value={value}
                       onChangeText={(text) => {

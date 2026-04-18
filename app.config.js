@@ -11,7 +11,7 @@ module.exports = () => ({
   expo: {
     name: appName,
     slug: "tunenova",
-    version: "2.1.7",
+    version: "2.2.1",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
     scheme: "tunenova",
@@ -52,10 +52,10 @@ module.exports = () => ({
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#000000",
+          image: "./assets/images/splash-icon.png",
+          imageWidth: 200,
+          resizeMode: "contain",
+          backgroundColor: "#000000",
         },
       ],
       "expo-asset",

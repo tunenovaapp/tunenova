@@ -41,17 +41,26 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    let isCancelled = false;
     let notificationListener: Notifications.Subscription | undefined;
     let responseListener: Notifications.Subscription | undefined;
 
-    registerForPushNotificationsAsync().then(
-      (token) => setExpoPushToken(token!), // Ensure token is not null
-      (error) => setError(error)
-    );
+    registerForPushNotificationsAsync().then((result) => {
+      if (isCancelled) {
+        return;
+      }
+
+      setExpoPushToken(result.token);
+      setError(result.error);
+
+      if (result.error) {
+        console.warn("Notification registration failed", result.error);
+      }
+    });
 
     notificationListener = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        setNotification(notification);
+      (incomingNotification) => {
+        setNotification(incomingNotification);
       }
     );
 
@@ -62,6 +71,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     );
 
     return () => {
+      isCancelled = true;
       notificationListener && notificationListener.remove();
       responseListener && responseListener.remove();
     };

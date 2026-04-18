@@ -6,7 +6,7 @@ import {
   useListenToCampaign,
 } from "@/api/campaign/campaign";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAudioPlayer } from "expo-audio";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { usePathname } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, {
@@ -19,9 +19,14 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Linking, Platform, ToastAndroid } from "react-native";
+import {
+  AppState,
+  AppStateStatus,
+  Linking,
+  Platform,
+  ToastAndroid,
+} from "react-native";
 
-// Types
 interface PlayerContextType {
   player: any;
   isPaused: boolean;
@@ -35,7 +40,7 @@ interface PlayerContextType {
   next: (paused?: boolean) => Promise<void>;
   previous: () => void;
   like: () => Promise<void>;
-  dislike: () => void;
+  dislike: () => Promise<void>;
   refreshing: boolean;
   onRefresh: () => Promise<void>;
   isLoading: boolean;
@@ -53,136 +58,214 @@ export const usePlayer = () => {
 
 export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   const [page, setPage] = useState(1);
-  const { data, isLoading, isError, refetch, isFetching } = useExploreCampaigns(
-    { page }
-  );
+  const { data, isLoading, refetch } = useExploreCampaigns({ page });
   const pathname = usePathname();
-
   const queryClient = useQueryClient();
-
-  // Debug: Log initial pathname
-  useEffect(() => {
-    console.log("🔍 PlayerContext: Initial pathname =", pathname);
-  }, []);
 
   const campaigns = useMemo(() => data?.data?.campaigns || [], [data]);
   const pagination = data?.data?.pagination;
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [appState, setAppState] = useState<AppStateStatus>(
+    AppState.currentState
+  );
+  const lastLoadedSourceRef = useRef<string | null>(null);
+  const needsSeekRef = useRef(false);
+  const lastPlaybackIntentRef = useRef<"play" | "pause" | null>(null);
 
-  // Debug: Log initial isPaused state
   useEffect(() => {
-    console.log("🔍 PlayerContext: Initial isPaused =", isPaused);
-  }, []);
+    console.log("[PlayerContext] isPaused changed =", isPaused);
+  }, [isPaused]);
 
   const { mutate: listenMutate } = useListenToCampaign();
   const { mutateAsync: likeMutate } = useLikeCampaign();
   const { mutate: discoverMutate } = useDiscoverCampaign();
   const { mutateAsync: dislikeMutate } = useDisLikeCampaign();
 
-  const campaign = useMemo(() => {
-    return campaigns[currentIdx];
-  }, [campaigns, currentIdx]);
-  const player = useAudioPlayer(
-    campaign?.audioFileUrl ? { uri: campaign.audioFileUrl } : undefined
+  const campaign = useMemo(() => campaigns[currentIdx], [campaigns, currentIdx]);
+  const player = useAudioPlayer(null);
+  const status = useAudioPlayerStatus(player);
+
+  const safePause = useCallback(
+    (reason: string) => {
+      try {
+        player.pause();
+        lastPlaybackIntentRef.current = "pause";
+      } catch (error) {
+        console.warn(`PlayerContext: failed to pause (${reason})`, error);
+      }
+    },
+    [player]
   );
 
-  // Pause player for new users
+  const safePlay = useCallback(
+    (reason: string) => {
+      if (!status.isLoaded) {
+        console.log(
+          "[PlayerContext] Waiting for audio to load before play",
+          reason
+        );
+        return;
+      }
+
+      try {
+        player.play();
+        lastPlaybackIntentRef.current = "play";
+      } catch (error) {
+        console.warn(`PlayerContext: failed to play (${reason})`, error);
+      }
+    },
+    [player, status.isLoaded]
+  );
+
+  const syncPlayback = useCallback(
+    (reason: string) => {
+      const isOnHome = pathname === "/home";
+      const hasAudio = Boolean(campaign?.audioFileUrl);
+      const shouldPlay =
+        hasAudio && isOnHome && !isPaused && appState === "active";
+
+      if (!hasAudio) {
+        safePause(`${reason}: no campaign audio`);
+        return;
+      }
+
+      if (!status.isLoaded) {
+        console.log(
+          "[PlayerContext] Audio not loaded yet, deferring playback sync",
+          reason
+        );
+        return;
+      }
+
+      if (shouldPlay) {
+        if (lastPlaybackIntentRef.current === "play" && status.playing) {
+          return;
+        }
+
+        console.log("[PlayerContext] Syncing to play", reason);
+        safePlay(reason);
+        return;
+      }
+
+      if (lastPlaybackIntentRef.current === "pause" && !status.playing) {
+        return;
+      }
+
+      console.log("[PlayerContext] Syncing to pause", reason);
+      safePause(reason);
+    },
+    [
+      appState,
+      campaign?.audioFileUrl,
+      isPaused,
+      pathname,
+      safePause,
+      safePlay,
+      status.isLoaded,
+      status.playing,
+    ]
+  );
+
   useEffect(() => {
+    let isCancelled = false;
+
     (async () => {
       const isNewUser = await SecureStore.getItemAsync("isNewUser");
-      console.log("🔍 PlayerContext: isNewUser =", isNewUser);
-      if (isNewUser === "true") {
-        console.log("🔍 PlayerContext: Pausing for new user");
-        player.pause();
+      console.log("[PlayerContext] isNewUser =", isNewUser);
+
+      if (!isCancelled && isNewUser === "true") {
+        console.log("[PlayerContext] Pausing for new user");
         setIsPaused(true);
         await SecureStore.deleteItemAsync("isNewUser");
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
-  // Pause when not on home
   useEffect(() => {
-    console.log("🔍 PlayerContext: Pathname changed to =", pathname);
+    console.log("[PlayerContext] Pathname changed =", pathname);
     if (pathname !== "/home") {
-      console.log("🔍 PlayerContext: Pausing because not on home");
-      player.pause();
+      console.log("[PlayerContext] Pausing because not on home");
       setIsPaused(true);
     } else {
-      console.log("🔍 PlayerContext: Now on home, resuming player");
+      console.log("[PlayerContext] Now on home, resuming player");
       setIsPaused(false);
     }
   }, [pathname]);
 
-  // Play/pause on isPaused change
   useEffect(() => {
-    console.log("🔍 PlayerContext: isPaused changed to =", isPaused);
-    if (isPaused) {
-      console.log("🔍 PlayerContext: Pausing player due to isPaused = true");
-      player.pause();
-    } else {
-      console.log("🔍 PlayerContext: Playing player due to isPaused = false");
-      player.play();
-    }
-  }, [isPaused]);
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      console.log("[PlayerContext] AppState changed =", nextAppState);
+      setAppState(nextAppState);
 
-  // AppState listener for foreground/background
-  useEffect(() => {
-    const handleAppStateChange = (nextAppState: string) => {
-      console.log("🔍 PlayerContext: AppState changed to =", nextAppState);
-      if (nextAppState === "active") {
-        console.log(
-          "🔍 PlayerContext: App became active, setting isPaused = false"
-        );
+      if (nextAppState === "active" && pathname === "/home") {
+        console.log("[PlayerContext] App became active on home");
         setIsPaused(false);
-        setTimeout(() => {
-          try {
-            console.log(pathname);
-            if (pathname === "/home") {
-              console.log("🔍 PlayerContext: Playing on home after app active");
-              player.play();
-            } else {
-              console.log(
-                "🔍 PlayerContext: Pausing because not on home after app active"
-              );
-              player.pause();
-            }
-          } catch (err) {
-            console.log("dan dan dannnnn...");
-            ToastAndroid.show("Tap logo to resume player", ToastAndroid.SHORT);
-          }
-        }, 1000);
-      } else if (nextAppState === "background") {
-        console.log("🔍 PlayerContext: App went to background, pausing");
+      } else if (
+        nextAppState === "background" ||
+        nextAppState === "inactive"
+      ) {
+        console.log("[PlayerContext] App went to background");
       }
     };
+
     const subscription = AppState.addEventListener(
       "change",
       handleAppStateChange
     );
+
     return () => subscription.remove();
-  }, [player, pathname]);
+  }, [pathname]);
 
-  // Play new audio on campaign change
   useEffect(() => {
-    if (campaign?.audioFileUrl) {
-      console.log("🔍 PlayerContext: Campaign changed, loading new audio");
-      player.replace({ uri: campaign.audioFileUrl });
-      player.seekTo(0);
-      if (isPaused === true) {
-        console.log("🔍 PlayerContext: Keeping paused after campaign change");
-        player.pause();
-      } else {
-        console.log("🔍 PlayerContext: Playing after campaign change");
-        player.play();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaign?.audioFileUrl, currentIdx]);
+    const nextSource = campaign?.audioFileUrl || null;
 
-  // Navigation
+    if (!nextSource) {
+      lastLoadedSourceRef.current = null;
+      needsSeekRef.current = false;
+      lastPlaybackIntentRef.current = null;
+      syncPlayback("campaign cleared");
+      return;
+    }
+
+    if (lastLoadedSourceRef.current === nextSource) {
+      return;
+    }
+
+    console.log("[PlayerContext] Campaign changed, loading new audio");
+    lastLoadedSourceRef.current = nextSource;
+    needsSeekRef.current = true;
+    lastPlaybackIntentRef.current = null;
+
+    try {
+      player.replace({ uri: nextSource });
+    } catch (error) {
+      console.warn("PlayerContext: failed to replace player source", error);
+    }
+  }, [campaign?.audioFileUrl, player, syncPlayback]);
+
+  useEffect(() => {
+    if (!campaign?.audioFileUrl || !status.isLoaded || !needsSeekRef.current) {
+      return;
+    }
+
+    try {
+      player.seekTo(0);
+      needsSeekRef.current = false;
+    } catch (error) {
+      console.warn("PlayerContext: failed to seek after loading audio", error);
+    }
+  }, [campaign?.audioFileUrl, player, status.isLoaded]);
+
+  useEffect(() => {
+    syncPlayback("playback intent update");
+  }, [syncPlayback]);
+
   const next = useCallback(
     async (paused = false) => {
       if (currentIdx < campaigns.length - 1) {
@@ -201,17 +284,17 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
               queryKey: ["explore", 1, 10],
             });
           }
-          player.pause();
+          safePause("queue wrapped");
           await refetch();
         } else {
           setPage(nextPage);
           setCurrentIdx(0);
-          player.pause();
+          safePause("queue advanced");
           await refetch();
         }
       }
     },
-    [currentIdx, campaigns.length, pagination, player, refetch]
+    [campaigns.length, currentIdx, pagination, queryClient, refetch, safePause]
   );
 
   const previous = useCallback(() => {
@@ -222,34 +305,17 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
 
   const play = useCallback(() => {
     setIsPaused(false);
-    player.play();
-  }, [player]);
+  }, []);
 
   const pause = useCallback(() => {
     setIsPaused(true);
-    player.pause();
-  }, [player]);
+  }, []);
 
   const like = useCallback(async () => {
     try {
       if (!campaign) return;
-      await likeMutate({ id: campaign?.id });
+      await likeMutate({ id: campaign.id });
       await Linking.openURL(campaign.songLink!);
-      await next();
-    } catch (e) {
-      if (Platform.OS === "android") {
-        ToastAndroid.show("Failed to dislike campaign", ToastAndroid.SHORT);
-      } else {
-        alert("Failed to dislike campaign");
-      }
-      throw e;
-    }
-  }, [campaign, likeMutate, next]);
-
-  const dislike = useCallback(async () => {
-    if (!campaign) return;
-    try {
-      await dislikeMutate({ id: campaign?.id });
       await next();
     } catch (e) {
       if (Platform.OS === "android") {
@@ -259,9 +325,23 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
       }
       throw e;
     }
+  }, [campaign, likeMutate, next]);
+
+  const dislike = useCallback(async () => {
+    if (!campaign) return;
+    try {
+      await dislikeMutate({ id: campaign.id });
+      await next();
+    } catch (e) {
+      if (Platform.OS === "android") {
+        ToastAndroid.show("Failed to dislike campaign", ToastAndroid.SHORT);
+      } else {
+        alert("Failed to dislike campaign");
+      }
+      throw e;
+    }
   }, [campaign, dislikeMutate, next]);
 
-  // Refresh
   const isRefreshingRef = useRef(false);
   const onRefresh = useCallback(async () => {
     if (isRefreshingRef.current) return;
@@ -269,14 +349,14 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
     setRefreshing(true);
     try {
       if (player && player.isLoaded) {
-        player.pause();
+        safePause("refresh");
       }
       await refetch();
     } finally {
       setRefreshing(false);
       isRefreshingRef.current = false;
     }
-  }, [player, refetch]);
+  }, [player, refetch, safePause]);
 
   const value = useMemo(
     () => ({
@@ -300,24 +380,24 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
       discoverMutate,
     }),
     [
-      player,
-      isPaused,
-      setIsPaused,
-      currentIdx,
-      setCurrentIdx,
-      campaigns,
       campaign,
-      play,
-      pause,
-      next,
-      previous,
-      like,
+      campaigns,
+      currentIdx,
       dislike,
-      refreshing,
-      onRefresh,
-      isLoading,
-      listenMutate,
       discoverMutate,
+      isLoading,
+      isPaused,
+      like,
+      listenMutate,
+      next,
+      onRefresh,
+      pause,
+      play,
+      player,
+      previous,
+      refreshing,
+      setCurrentIdx,
+      setIsPaused,
     ]
   );
 

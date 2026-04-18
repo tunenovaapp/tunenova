@@ -6,7 +6,6 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
-import * as WebBrowser from "expo-web-browser";
 import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
@@ -19,22 +18,13 @@ Notifications.setNotificationHandler({
   }),
 });
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync().catch((error) => {
+  console.warn("SplashScreen.preventAutoHideAsync failed", error);
+});
 
 const queryClient = new QueryClient();
 
-export const useWarmUpBrowser = () => {
-  useEffect(() => {
-    void WebBrowser.warmUpAsync();
-    return () => {
-      void WebBrowser.coolDownAsync();
-    };
-  }, []);
-};
-
 export default function RootLayout() {
-  useWarmUpBrowser();
-
   const [loaded, error] = useFonts({
     "Nunito-Bold": require("../assets/fonts/Montserrat-Bold.ttf"),
     "Nunito-SemiBold": require("../assets/fonts/Montserrat-SemiBold.ttf"),
@@ -48,7 +38,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded || error) {
-      SplashScreen.hideAsync();
+      void SplashScreen.hideAsync().catch((hideError) => {
+        console.warn("SplashScreen.hideAsync failed", hideError);
+      });
     }
   }, [loaded, error]);
 
