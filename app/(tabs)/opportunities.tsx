@@ -196,10 +196,10 @@ export default function OpportunitiesScreen() {
     if (!Number.isFinite(budgetValue) || budgetValue <= 0) {
       return null;
     }
-
-    const midpoint = budgetValue / 2;
-    const lower = Math.max(0, Math.floor(midpoint - 30));
-    const upper = Math.max(lower, Math.ceil(midpoint + 30));
+    const midpoint = budgetValue / 2
+    const clicks = midpoint /20;
+    const lower = Math.max(0, Math.floor(clicks - 30));
+    const upper = Math.max(lower, Math.ceil(clicks + 30));
 
     return { lower, upper };
   }, [formBudget]);
@@ -591,10 +591,6 @@ export default function OpportunitiesScreen() {
                     ? `${clickRange.lower.toLocaleString("en-NG")} - ${clickRange.upper.toLocaleString("en-NG")} clicks`
                     : "Enter a budget to see the estimated range"}
                 </Text>
-                <Text style={styles.rangeHint}>
-                  Calculated as budget divided by 2, then minus 30 for the lower
-                  range and plus 30 for the higher range.
-                </Text>
               </View>
 
               <TouchableOpacity
@@ -625,9 +621,7 @@ export default function OpportunitiesScreen() {
                 )}
               </TouchableOpacity>
 
-              <Text style={styles.submitHint}>
-                Opportunity submitted. You&apos;ll be alerted when its active.
-              </Text>
+              
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
