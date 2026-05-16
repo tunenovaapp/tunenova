@@ -98,7 +98,7 @@ export default function NotificationsScreen() {
                 size={40}
                 color="#64748B"
               />
-              <Text style={styles.emptyTitle}>You're all caught up</Text>
+              <Text style={styles.emptyTitle}>{"You're all caught up"}</Text>
               <Text style={styles.emptyBody}>
                 No unread notifications. New updates will show up here.
               </Text>

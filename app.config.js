@@ -11,7 +11,7 @@ module.exports = () => ({
   expo: {
     name: appName,
     slug: "tunenova",
-    version: "2.2.3",
+    version: "2.2.4",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
     scheme: "tunenova",
@@ -59,9 +59,11 @@ module.exports = () => ({
         },
       ],
       "expo-asset",
+      "expo-image",
       "expo-secure-store",
       "expo-audio",
       "expo-notifications",
+      "expo-web-browser",
     ],
     experiments: {
       typedRoutes: true,
