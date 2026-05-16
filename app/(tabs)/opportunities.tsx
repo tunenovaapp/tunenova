@@ -196,8 +196,8 @@ export default function OpportunitiesScreen() {
     if (!Number.isFinite(budgetValue) || budgetValue <= 0) {
       return null;
     }
-    const midpoint = budgetValue / 2
-    const clicks = midpoint /20;
+    const midpoint = budgetValue / 2;
+    const clicks = midpoint / 20;
     const lower = Math.max(0, Math.floor(clicks - 30));
     const upper = Math.max(lower, Math.ceil(clicks + 30));
 
@@ -620,8 +620,6 @@ export default function OpportunitiesScreen() {
                   </Text>
                 )}
               </TouchableOpacity>
-
-              
             </ScrollView>
           </View>
         </KeyboardAvoidingView>

@@ -199,6 +199,7 @@ export interface StatsData {
   referrals: number;
   discoveries: number;
   campaignsCreated: number;
+  points: number;
 }
 
 export type StatsResponse = StatsData; // endpoint returns raw JSON, no wrapper

@@ -94,7 +94,7 @@ export default function WalletScreen() {
       {
         icon: "sparkles-outline",
         label: "Points",
-        value: formatNumber(stats?.listens ?? 0),
+        value: formatNumber(stats?.points ?? 0),
         accent: "#1E293B",
       },
       {
@@ -119,7 +119,7 @@ export default function WalletScreen() {
     [
       convertedFromPoints?.totalConverted,
       stats?.discoveries,
-      stats?.listens,
+      stats?.points,
       stats?.referrals,
     ],
   );
