@@ -224,6 +224,54 @@ export function useStats(
   });
 }
 
+/* ─────────── Daily streak ─────────── */
+
+export interface ClaimStreakResponse {
+  success: boolean;
+  message: string;
+  currentStreak: number;
+  longestStreak: number;
+  pointsAwarded?: number;
+  nextClaimInMs?: number;
+}
+
+const claimDailyStreak = async (): Promise<ClaimStreakResponse> => {
+  const { data } = await api.post<ClaimStreakResponse>("/user/streak");
+  return data;
+};
+
+export function useClaimDailyStreak(
+  options?: UseMutationOptions<
+    ClaimStreakResponse,
+    AxiosError<ApiError>,
+    void
+  >
+) {
+  const qc = useQueryClient();
+
+  return useMutation<ClaimStreakResponse, AxiosError<ApiError>, void>({
+    mutationFn: claimDailyStreak,
+    ...options,
+    onSuccess: (data, variables, context) => {
+      qc.setQueryData<ClaimStreakResponse>(["streak"], data);
+      if (data.success && (data.pointsAwarded ?? 0) > 0) {
+        void qc.invalidateQueries({ queryKey: ["stats"] });
+      }
+      options?.onSuccess?.(data, variables, context);
+    },
+  });
+}
+
+export function useStreakData() {
+  const { data } = useQuery<ClaimStreakResponse | null>({
+    queryKey: ["streak"],
+    queryFn: () => null,
+    enabled: false,
+    staleTime: Infinity,
+  });
+  return data ?? null;
+}
+
 export interface UserProfile {
   id: string;
   name: string | null;

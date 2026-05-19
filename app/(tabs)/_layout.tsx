@@ -1,3 +1,4 @@
+import { DailyStreakSync } from "@/components/DailyStreakSync";
 import { PlayerProvider } from "@/components/PlayerContext";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FontAwesome, Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -9,6 +10,7 @@ export default function TabLayout() {
   return (
     <RequireAuth>
       <PlayerProvider>
+        <DailyStreakSync />
         <Tabs
           screenOptions={{
             tabBarActiveTintColor: "#fff",

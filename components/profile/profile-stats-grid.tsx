@@ -27,7 +27,7 @@ export function ProfileStatsGrid({
   if (isLoading) {
     return (
       <View style={styles.grid}>
-        {Array.from({ length: 4 }).map((_, index) => (
+        {Array.from({ length: metrics.length || 4 }).map((_, index) => (
           <WalletSkeleton key={index} style={styles.skeletonCard} />
         ))}
       </View>

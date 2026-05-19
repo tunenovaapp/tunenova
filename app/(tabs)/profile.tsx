@@ -1,6 +1,6 @@
 import { purgeTokens } from "@/api/apiclient";
 import { useProfile } from "@/api/auth/auth";
-import { useStats, useUpdateNotifications } from "@/api/user/user";
+import { useStats, useStreakData, useUpdateNotifications } from "@/api/user/user";
 import { ProfileAccountActions } from "@/components/profile/profile-account-actions";
 import { ProfileHero } from "@/components/profile/profile-hero";
 import {
@@ -87,6 +87,8 @@ export default function ProfileScreen() {
     refetch: refetchStats,
   } = useStats();
 
+  const streak = useStreakData();
+
   const { expoPushToken, error: notificationError } = useNotification();
   const profile = profileData?.data;
   const notificationsEnabled = profile?.notificationsEnabled ?? false;
@@ -171,12 +173,19 @@ export default function ProfileScreen() {
         value: formatNumber(stats?.campaignsCreated ?? 0),
         accent: "#1F1A0D",
       },
+      {
+        icon: "flame-outline",
+        label: "Streak",
+        value: formatNumber(streak?.currentStreak ?? 0),
+        accent: "#2A1610",
+      },
     ],
     [
       stats?.campaignsCreated,
       stats?.discoveries,
       stats?.listens,
       stats?.referrals,
+      streak?.currentStreak,
     ],
   );
 
