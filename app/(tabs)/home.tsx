@@ -8,6 +8,7 @@ import { HomeTipsModal } from "@/components/home/home-tips-modal";
 import { HomeUploadSheet } from "@/components/home/home-upload-sheet";
 import { NowPlayingCard } from "@/components/home/now-playing-card";
 import { usePlayer } from "@/components/PlayerContext";
+import { NOVA_TIPS } from "@/constants/novaTips";
 import { useNotification } from "@/context/notificationsContext";
 import { useInboxNotifications } from "@/hooks/useInboxNotifications";
 import { RFValue } from "@/utils/responsiveFont";
@@ -57,13 +58,6 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const LISTEN_COMPLETION_SECONDS = 20;
 const TRACK_LOADING_TIMEOUT_MS = 12_000;
 const DEFAULT_HERO = require("../../assets/images/hero-default.png");
-const HOME_TIPS = [
-  "Earn cash instantly when you listen to songs with the sponsored tag.",
-  "Tap the artwork to pause or resume the track currently playing.",
-  "Double-tap the left or right side of the player card to jump backward or forward.",
-  "Unlock the discover button by listening long enough, then open the streaming link.",
-  "Keep the queue alive by adding your own track from the floating Add Track button.",
-];
 
 type CreateFreeCampaignParams = {
   fileUri: string;
@@ -996,7 +990,7 @@ export default function ExplorePlayerScreen() {
   ]);
 
   const handleContinueTips = useCallback(async () => {
-    if (currentTipIdx < HOME_TIPS.length - 1) {
+    if (currentTipIdx < NOVA_TIPS.length - 1) {
       setCurrentTipIdx((idx) => idx + 1);
       return;
     }
@@ -1230,8 +1224,8 @@ export default function ExplorePlayerScreen() {
       <HomeTipsModal
         visible={showTipsModal}
         currentStep={currentTipIdx}
-        totalSteps={HOME_TIPS.length}
-        tip={HOME_TIPS[currentTipIdx] || HOME_TIPS[0]}
+        totalSteps={NOVA_TIPS.length}
+        tip={NOVA_TIPS[currentTipIdx] || NOVA_TIPS[0]}
         onContinue={() => {
           void handleContinueTips();
         }}

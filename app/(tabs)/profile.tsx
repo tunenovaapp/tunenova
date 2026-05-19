@@ -1,6 +1,7 @@
 import { purgeTokens } from "@/api/apiclient";
 import { useProfile } from "@/api/auth/auth";
 import { useStats, useStreakData, useUpdateNotifications } from "@/api/user/user";
+import { HomeTipsModal } from "@/components/home/home-tips-modal";
 import { ProfileAccountActions } from "@/components/profile/profile-account-actions";
 import { ProfileHero } from "@/components/profile/profile-hero";
 import {
@@ -15,7 +16,9 @@ import {
 } from "@/components/profile/profile-stats-grid";
 import { ProfileSupportCard } from "@/components/profile/profile-support-card";
 import { WalletReferralCard } from "@/components/wallet/wallet-referral-card";
+import { NOVA_TIPS } from "@/constants/novaTips";
 import { useNotification } from "@/context/notificationsContext";
+import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { Tabs, router } from "expo-router";
@@ -23,6 +26,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Linking,
+  Pressable,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -99,6 +103,8 @@ export default function ProfileScreen() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [notificationFeedback, setNotificationFeedback] =
     useState<ProfileNotificationFeedback | null>(null);
+  const [showTipsModal, setShowTipsModal] = useState(false);
+  const [tipIdx, setTipIdx] = useState(0);
 
   const { mutate: updateNotifications, isPending: notifPending } =
     useUpdateNotifications({
@@ -397,6 +403,30 @@ export default function ProfileScreen() {
                 />
               </Animated.View>
 
+              <Animated.View entering={FadeInUp.delay(270).duration(260)}>
+                <Pressable
+                  onPress={() => {
+                    setTipIdx(0);
+                    setShowTipsModal(true);
+                  }}
+                  style={({ pressed }) => [
+                    styles.howItWorksCard,
+                    pressed && styles.howItWorksPressed,
+                  ]}
+                >
+                  <View style={styles.howItWorksIcon}>
+                    <Ionicons name="bulb-outline" size={18} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.howItWorksCopy}>
+                    <Text style={styles.howItWorksTitle}>How it works</Text>
+                    <Text style={styles.howItWorksDescription}>
+                      Revisit the Nova tips to brush up on the listening flow.
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                </Pressable>
+              </Animated.View>
+
               <Animated.View entering={FadeInUp.delay(300).duration(260)}>
                 <ProfileSupportCard
                   supportEmail={SUPPORT_EMAIL}
@@ -415,6 +445,20 @@ export default function ProfileScreen() {
           )}
         </ScrollView>
       </View>
+
+      <HomeTipsModal
+        visible={showTipsModal}
+        currentStep={tipIdx}
+        totalSteps={NOVA_TIPS.length}
+        tip={NOVA_TIPS[tipIdx] || NOVA_TIPS[0]}
+        onContinue={() => {
+          if (tipIdx < NOVA_TIPS.length - 1) {
+            setTipIdx((idx) => idx + 1);
+            return;
+          }
+          setShowTipsModal(false);
+        }}
+      />
     </>
   );
 }
@@ -448,5 +492,41 @@ const styles = StyleSheet.create({
   },
   stack: {
     gap: 12,
+  },
+  howItWorksCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#1E222A",
+    backgroundColor: "#0B0E12",
+    padding: 18,
+  },
+  howItWorksPressed: {
+    opacity: 0.85,
+  },
+  howItWorksIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#2A1610",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  howItWorksCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  howItWorksTitle: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontFamily: "Nunito-Bold",
+  },
+  howItWorksDescription: {
+    color: "#94A3B8",
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "Nunito-Regular",
   },
 });
