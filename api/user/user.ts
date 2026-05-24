@@ -360,6 +360,41 @@ export function useVerifiedUsersCount() {
   });
 }
 
+/* ─────────── Leaderboard ─────────── */
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: number;
+  name: string | null;
+  points: number;
+}
+
+export interface LeaderboardResponse {
+  success: boolean;
+  data: LeaderboardEntry[];
+}
+
+const fetchLeaderboard = async (): Promise<LeaderboardResponse> => {
+  const { data } = await api.get<LeaderboardResponse>("/user/leaderboard");
+  return data;
+};
+
+export function useLeaderboard(
+  options?: UseQueryOptions<
+    LeaderboardResponse,
+    AxiosError<ApiError>,
+    LeaderboardResponse
+  >
+) {
+  return useQuery<LeaderboardResponse, AxiosError<ApiError>>({
+    queryKey: ["leaderboard"],
+    queryFn: fetchLeaderboard,
+    staleTime: 60_000,
+    retry: true,
+    ...options,
+  });
+}
+
 export interface CouponsData {
   id: number;
   value: string;

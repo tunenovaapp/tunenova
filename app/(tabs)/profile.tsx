@@ -344,6 +344,27 @@ export default function ProfileScreen() {
               </Animated.View>
 
               <Animated.View entering={FadeInUp.delay(120).duration(260)}>
+                <Pressable
+                  onPress={() => router.push("/(others)/leaderboard")}
+                  style={({ pressed }) => [
+                    styles.leaderboardCard,
+                    pressed && styles.leaderboardCardPressed,
+                  ]}
+                >
+                  <View style={styles.leaderboardIcon}>
+                    <Ionicons name="trophy-outline" size={18} color="#FFD700" />
+                  </View>
+                  <View style={styles.leaderboardCopy}>
+                    <Text style={styles.leaderboardTitle}>Leaderboard</Text>
+                    <Text style={styles.leaderboardDesc}>
+                      See the top listeners ranked by points
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#64748B" />
+                </Pressable>
+              </Animated.View>
+
+              <Animated.View entering={FadeInUp.delay(150).duration(260)}>
                 <WalletReferralCard
                   referralCode={referralCode}
                   copied={copied}
@@ -492,6 +513,42 @@ const styles = StyleSheet.create({
   },
   stack: {
     gap: 12,
+  },
+  leaderboardCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#1E222A",
+    backgroundColor: "#0B0E12",
+    padding: 18,
+  },
+  leaderboardCardPressed: {
+    opacity: 0.85,
+  },
+  leaderboardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#2A1F0D",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  leaderboardCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  leaderboardTitle: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontFamily: "Nunito-Bold",
+  },
+  leaderboardDesc: {
+    color: "#94A3B8",
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "Nunito-Regular",
   },
   howItWorksCard: {
     flexDirection: "row",

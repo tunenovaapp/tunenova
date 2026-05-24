@@ -43,6 +43,15 @@ export default function TabLayout() {
             }}
           />
           <Tabs.Screen
+            name="launchroom"
+            options={{
+              title: "Launchroom",
+              tabBarIcon: ({ color }) => (
+                <Ionicons name="rocket-outline" size={26} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
             name="promote"
             options={{
               title: "Promote",
