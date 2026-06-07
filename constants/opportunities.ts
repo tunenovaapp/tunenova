@@ -19,6 +19,7 @@ export type OpportunityRow = {
 
 export type Opportunity = {
   id: number;
+  userId?: number;
   title: string;
   description: string;
   imageUrl: string;
@@ -37,6 +38,7 @@ export function mapOpportunity(row: OpportunityRow): Opportunity {
   const status = row.status ?? "active";
   return {
     id: row.id,
+    userId: row.userId,
     title: row.title,
     description: row.description,
     imageUrl: row.imageUrl,

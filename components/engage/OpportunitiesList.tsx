@@ -2,12 +2,16 @@ import {
   MIN_OPPORTUNITY_BUDGET_NGN,
   type Opportunity,
 } from "@/constants/opportunities";
+import { useProfile } from "@/api/user/user";
+import { AnalyticsFilterChips } from "@/components/analytics/analytics-filter-chips";
 import {
   useCreateOpportunity,
+  useMyCreatedOpportunities,
+  useMySharedOpportunities,
   useOpportunities,
   useOpportunityShareLink,
 } from "@/hooks/useOpportunities";
-import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -29,7 +33,6 @@ import {
   Pressable,
   ScrollView,
   Share,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -45,10 +48,11 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const formatBonusPreview = (amount: number) =>
-  `\u20A6${Number(amount).toLocaleString("en-NG", {
+  `₦${Number(amount).toLocaleString("en-NG", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })}`;
+
 function showDownloadMessage(message: string) {
   if (Platform.OS === "android") {
     ToastAndroid.show(message, ToastAndroid.SHORT);
@@ -65,7 +69,7 @@ function showSubmitMessage(message: string) {
   Alert.alert("Notice", message);
 }
 
-export default function OpportunitiesScreen() {
+export function OpportunitiesList() {
   const router = useRouter();
   const { top, bottom } = useSafeAreaInsets();
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
@@ -73,21 +77,120 @@ export default function OpportunitiesScreen() {
   const [showCreateSheet, setShowCreateSheet] = useState(false);
   const [isFabEnabled, setIsFabEnabled] = useState(true);
 
+  const [filter, setFilter] = useState<"active" | "joined" | "mine">("active");
+
+  // "Active" pages the server-side active list; "Joined" / "Mine" come from
+  // their own per-user endpoints. Each is an infinite (paged) list.
   const {
-    data: opportunities = [],
+    items: activeOpportunities,
+    total: activeTotal,
     isPending: isListPending,
     refetch: refetchOpportunities,
+    fetchNextPage: fetchMoreActive,
+    hasNextPage: hasMoreActive,
+    isFetchingNextPage: isFetchingMoreActive,
   } = useOpportunities();
+  const {
+    items: sharedOpportunities,
+    total: sharedTotal,
+    isPending: isSharedPending,
+    refetch: refetchShared,
+    fetchNextPage: fetchMoreShared,
+    hasNextPage: hasMoreShared,
+    isFetchingNextPage: isFetchingMoreShared,
+  } = useMySharedOpportunities();
+  const {
+    items: myOpportunities,
+    total: myTotal,
+    isPending: isMinePending,
+    refetch: refetchMine,
+    fetchNextPage: fetchMoreMine,
+    hasNextPage: hasMoreMine,
+    isFetchingNextPage: isFetchingMoreMine,
+  } = useMyCreatedOpportunities();
   const { mutateAsync: createOpportunity, isPending: isCreating } =
     useCreateOpportunity();
   const { mutateAsync: getShareLink } = useOpportunityShareLink();
+  const { data: profileData } = useProfile();
+  const userName = profileData?.data?.name?.trim() || "";
+  const currentUserId = profileData?.data?.id;
+
+  const displayedOpportunities =
+    filter === "joined"
+      ? sharedOpportunities
+      : filter === "mine"
+        ? myOpportunities
+        : activeOpportunities;
+
+  const isDisplayedPending =
+    filter === "joined"
+      ? isSharedPending
+      : filter === "mine"
+        ? isMinePending
+        : isListPending;
+
+  const refetchDisplayed =
+    filter === "joined"
+      ? refetchShared
+      : filter === "mine"
+        ? refetchMine
+        : refetchOpportunities;
+
+  const fetchMoreDisplayed =
+    filter === "joined"
+      ? fetchMoreShared
+      : filter === "mine"
+        ? fetchMoreMine
+        : fetchMoreActive;
+
+  const hasMoreDisplayed =
+    filter === "joined"
+      ? hasMoreShared
+      : filter === "mine"
+        ? hasMoreMine
+        : hasMoreActive;
+
+  const isFetchingMoreDisplayed =
+    filter === "joined"
+      ? isFetchingMoreShared
+      : filter === "mine"
+        ? isFetchingMoreMine
+        : isFetchingMoreActive;
+
+  const filterOptions = useMemo(
+    () => [
+      { key: "active", label: "Active", count: activeTotal },
+      { key: "joined", label: "Joined", count: sharedTotal },
+      { key: "mine", label: "Mine", count: myTotal },
+    ],
+    [activeTotal, sharedTotal, myTotal],
+  );
+
+  const emptyCopy =
+    filter === "joined"
+      ? {
+          title: "No joined opportunities yet",
+          subtitle:
+            "Opportunities you share will appear here, even after they expire.",
+        }
+      : filter === "mine"
+        ? {
+            title: "No opportunities yet",
+            subtitle: "Opportunities you create will appear here.",
+          }
+        : {
+            title: "No active opportunities",
+            subtitle:
+              "New opportunities will appear here as they become available.",
+          };
 
   const [formTitle, setFormTitle] = useState("");
+  const [formArtistName, setFormArtistName] = useState(userName);
   const [formDetails, setFormDetails] = useState("");
   const [formLink, setFormLink] = useState("");
   const [formBudget, setFormBudget] = useState("");
   const [pickedImage, setPickedImage] =
-    useState<DocumentPicker.DocumentPickerAsset | null>(null);
+    useState<ImagePicker.ImagePickerAsset | null>(null);
 
   const fabIdleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fabEnabledRef = useRef(true);
@@ -142,19 +245,26 @@ export default function OpportunitiesScreen() {
     scheduleFabHide();
   }, [scheduleFabHide, showFab]);
 
+  useEffect(() => {
+    if (userName && !formArtistName) {
+      setFormArtistName(userName);
+    }
+  }, [userName]);
+
   const resetCreateForm = useCallback(() => {
     setFormTitle("");
+    setFormArtistName(userName);
     setFormDetails("");
     setFormLink("");
     setFormBudget("");
     setPickedImage(null);
-  }, []);
+  }, [userName]);
 
   const handlePickImage = useCallback(async () => {
     try {
-      const res = await DocumentPicker.getDocumentAsync({
-        type: "image/*",
-        copyToCacheDirectory: false,
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
       });
 
       if (res.canceled) {
@@ -170,7 +280,7 @@ export default function OpportunitiesScreen() {
   }, []);
 
   const canSubmit = useMemo(() => {
-    if (!formTitle.trim() || !formDetails.trim() || !formLink.trim()) {
+    if (!formTitle.trim() || !formArtistName.trim() || !formDetails.trim() || !formLink.trim()) {
       return false;
     }
 
@@ -189,7 +299,7 @@ export default function OpportunitiesScreen() {
     }
 
     return Boolean(pickedImage?.uri);
-  }, [formBudget, formDetails, formLink, formTitle, pickedImage?.uri]);
+  }, [formArtistName, formBudget, formDetails, formLink, formTitle, pickedImage?.uri]);
 
   const clickRange = useMemo(() => {
     const budgetValue = Number(formBudget || 0);
@@ -215,9 +325,10 @@ export default function OpportunitiesScreen() {
     try {
       await createOpportunity({
         imageUri: pickedImage.uri,
-        imageName: pickedImage.name || `opportunity-${Date.now()}.jpg`,
+        imageName: pickedImage.fileName || `opportunity-${Date.now()}.jpg`,
         imageMimeType: pickedImage.mimeType || "image/jpeg",
         title: formTitle.trim(),
+        artistName: formArtistName.trim(),
         description: formDetails.trim(),
         shareLink: formLink.trim(),
         budget: Number(formBudget),
@@ -238,6 +349,7 @@ export default function OpportunitiesScreen() {
   }, [
     canSubmit,
     createOpportunity,
+    formArtistName,
     formBudget,
     formDetails,
     formLink,
@@ -318,21 +430,32 @@ export default function OpportunitiesScreen() {
   );
 
   return (
-    <View style={styles.screen}>
-      <StatusBar barStyle="light-content" />
+    <View style={styles.container}>
       <FlatList
-        data={opportunities}
+        data={displayedOpportunities}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="automatic"
         scrollEventThrottle={16}
         onScroll={handleOpportunitiesScroll}
-        refreshing={isListPending}
+        refreshing={isDisplayedPending}
         onRefresh={() => {
-          void refetchOpportunities();
+          void refetchDisplayed();
         }}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (hasMoreDisplayed && !isFetchingMoreDisplayed) {
+            void fetchMoreDisplayed();
+          }
+        }}
+        ListFooterComponent={
+          isFetchingMoreDisplayed ? (
+            <View style={styles.footerLoading}>
+              <ActivityIndicator color="#E11D48" />
+            </View>
+          ) : null
+        }
         contentContainerStyle={{
-          paddingTop: top + 16,
           paddingBottom: bottom + 120,
           paddingHorizontal: 20,
           gap: 12,
@@ -340,7 +463,13 @@ export default function OpportunitiesScreen() {
         }}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.title}>Share & Earn</Text>
+            <AnalyticsFilterChips
+              options={filterOptions}
+              value={filter}
+              onChange={(key) =>
+                setFilter(key as "active" | "joined" | "mine")
+              }
+            />
             <Text style={styles.subtitle}>
               3 steps to earn: download the image, copy the link, share the
               image and link on WhatsApp, IG, X, TikTok & earn when people click
@@ -350,10 +479,8 @@ export default function OpportunitiesScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No opportunities yet</Text>
-            <Text style={styles.emptySubtitle}>
-              New opportunities will appear here as they become available.
-            </Text>
+            <Text style={styles.emptyTitle}>{emptyCopy.title}</Text>
+            <Text style={styles.emptySubtitle}>{emptyCopy.subtitle}</Text>
           </View>
         }
         renderItem={({ item }) => (
@@ -428,33 +555,32 @@ export default function OpportunitiesScreen() {
                 </TouchableOpacity>
               ) : null}
 
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => {
-                  void handleGetLink(item);
-                }}
-                disabled={Boolean(item.isExpired) || sharingId === item.id}
-                style={[
-                  styles.linkButton,
-                  item.isExpired && styles.linkButtonDisabled,
-                ]}
-              >
-                {sharingId === item.id ? (
-                  <ActivityIndicator
-                    color="#FFFFFF"
-                    size="small"
-                  />
-                ) : (
-                  <Text
-                    style={[
-                      styles.linkButtonText,
-                      item.isExpired && styles.linkButtonTextDisabled,
-                    ]}
-                  >
-                    {item.isExpired ? "Expired" : "Get Link"}
-                  </Text>
-                )}
-              </TouchableOpacity>
+              {String(item.userId) === String(currentUserId) ? null : (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    void handleGetLink(item);
+                  }}
+                  disabled={Boolean(item.isExpired) || sharingId === item.id}
+                  style={[
+                    styles.linkButton,
+                    item.isExpired && styles.linkButtonDisabled,
+                  ]}
+                >
+                  {sharingId === item.id ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.linkButtonText,
+                        item.isExpired && styles.linkButtonTextDisabled,
+                      ]}
+                    >
+                      {item.isExpired ? "Expired" : "Get Link"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -498,7 +624,7 @@ export default function OpportunitiesScreen() {
           <View style={[styles.sheet, { paddingBottom: bottom + 18 }]}>
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Create Campaign</Text>
+              <Text style={styles.sheetTitle}>Create Share & Earn Campaign</Text>
               <TouchableOpacity
                 onPress={() => setShowCreateSheet(false)}
                 style={styles.sheetClose}
@@ -526,6 +652,18 @@ export default function OpportunitiesScreen() {
               </View>
 
               <View style={styles.sheetField}>
+                <Text style={styles.sheetLabel}>Artist Name</Text>
+                <TextInput
+                  value={formArtistName}
+                  onChangeText={setFormArtistName}
+                  placeholder="e.g. DJ Nova"
+                  placeholderTextColor="#64748B"
+                  style={styles.sheetInput}
+                  returnKeyType="next"
+                />
+              </View>
+
+              <View style={styles.sheetField}>
                 <Text style={styles.sheetLabel}>Details</Text>
                 <TextInput
                   value={formDetails}
@@ -546,14 +684,14 @@ export default function OpportunitiesScreen() {
                     style={styles.secondaryButton}
                   >
                     <Text style={styles.secondaryButtonText}>
-                      {pickedImage?.name ? "Change image" : "Pick image"}
+                      {pickedImage?.uri ? "Change image" : "Pick image"}
                     </Text>
                   </TouchableOpacity>
                   <Text
                     style={styles.sheetHint}
                     numberOfLines={1}
                   >
-                    {pickedImage?.name || "No image selected"}
+                    {pickedImage?.fileName || (pickedImage?.uri ? "Image selected" : "No image selected")}
                   </Text>
                 </View>
               </View>
@@ -629,24 +767,22 @@ export default function OpportunitiesScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  container: {
     flex: 1,
-    backgroundColor: "#05070A",
   },
   header: {
     gap: 8,
     marginBottom: 8,
-  },
-  title: {
-    color: "#FFFFFF",
-    fontSize: 28,
-    fontFamily: "Nunito-Bold",
   },
   subtitle: {
     color: "#94A3B8",
     fontSize: 14,
     lineHeight: 21,
     fontFamily: "Nunito-Regular",
+  },
+  footerLoading: {
+    paddingVertical: 20,
+    alignItems: "center",
   },
   card: {
     borderRadius: 22,
@@ -895,12 +1031,6 @@ const styles = StyleSheet.create({
     fontFamily: "Nunito-Bold",
     lineHeight: 24,
   },
-  rangeHint: {
-    color: "#94A3B8",
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: "Nunito-Regular",
-  },
   submitButton: {
     marginTop: 6,
     borderRadius: 18,
@@ -919,12 +1049,5 @@ const styles = StyleSheet.create({
   },
   submitButtonTextDisabled: {
     color: "#CBD5E1",
-  },
-  submitHint: {
-    color: "#64748B",
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: "Nunito-Regular",
-    paddingBottom: 6,
   },
 });

@@ -1,3 +1,4 @@
+import { useProfile } from "@/api/auth/auth";
 import {
   useDeleteLaunchroomCampaign,
   useFanLinkClick,
@@ -5,23 +6,28 @@ import {
   useListenToLaunchroom,
   useShareCampaign,
 } from "@/api/launchroom/launchroom";
-import { useProfile } from "@/api/auth/auth";
 import { useCountdown } from "@/components/launchroom/countdown";
-import { LaunchroomComments } from "@/components/launchroom/launchroom-comments";
-import { LaunchroomLeaderboard } from "@/components/launchroom/launchroom-leaderboard";
-import { LaunchroomReactions } from "@/components/launchroom/launchroom-reactions";
+import { LaunchroomActionRail } from "@/components/launchroom/launchroom-action-rail";
+import { LaunchroomAnalyticsSheet } from "@/components/launchroom/launchroom-analytics-sheet";
+import { LaunchroomCommentsSheet } from "@/components/launchroom/launchroom-comments-sheet";
+import { LaunchroomLeaderboardSheet } from "@/components/launchroom/launchroom-leaderboard-sheet";
 import { Ionicons } from "@expo/vector-icons";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
   Linking,
   Pressable,
-  RefreshControl,
-  ScrollView,
   Share,
   StatusBar,
   StyleSheet,
@@ -41,7 +47,7 @@ export default function LaunchroomDetailScreen() {
   const params = useLocalSearchParams();
   const campaignId = Number(normalizeParam(params.id));
 
-  const { data: listData, refetch } = useLaunchroomCampaigns();
+  const { data: listData } = useLaunchroomCampaigns();
   const { data: profileData } = useProfile();
   const userId = profileData?.data?.id;
 
@@ -50,13 +56,15 @@ export default function LaunchroomDetailScreen() {
     [listData, campaignId],
   );
 
-  const isOwner = campaign?.userId != null && String(campaign.userId) === String(userId);
+  const isOwner =
+    campaign?.userId != null && String(campaign.userId) === String(userId);
   const isScheduled = campaign?.status === "scheduled";
   const canDelete =
     isOwner && campaign?.startsAt && new Date(campaign.startsAt) > new Date();
 
   const countdown = useCountdown(
-    isScheduled ? campaign?.startsAt ?? null : campaign?.endsAt ?? null,
+    isScheduled ? (campaign?.startsAt ?? null) : (campaign?.endsAt ?? null),
+    isScheduled ? 1_000 : 60_000,
   );
 
   // Audio player
@@ -72,7 +80,7 @@ export default function LaunchroomDetailScreen() {
   }, [isPlaying, player]);
 
   // Mutations
-  const { mutate: listen, isPending: isListening } = useListenToLaunchroom();
+  const { mutate: listen } = useListenToLaunchroom();
   const { mutate: fanLinkClick } = useFanLinkClick();
   const { mutate: shareCampaign } = useShareCampaign();
   const { mutate: deleteCampaign, isPending: isDeleting } =
@@ -89,12 +97,19 @@ export default function LaunchroomDetailScreen() {
       },
     });
 
-  const [refreshing, setRefreshing] = useState(false);
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
+  const [showComments, setShowComments] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+
+  // Auto-record a listen once the user has heard >= 50% of the snippet.
+  const hasRecorded = useRef(false);
+  useEffect(() => {
+    if (hasRecorded.current || status.duration <= 0) return;
+    if (status.currentTime / status.duration >= 0.5) {
+      hasRecorded.current = true;
+      listen(campaignId);
+    }
+  }, [status.currentTime, status.duration, campaignId, listen]);
 
   const handleListenFull = useCallback(() => {
     if (!campaign?.songLink) return;
@@ -126,17 +141,21 @@ export default function LaunchroomDetailScreen() {
     );
   }, [campaignId, deleteCampaign]);
 
-  const handleListen = useCallback(() => {
-    listen(campaignId);
-  }, [campaignId, listen]);
-
   if (!campaign) {
     return (
       <View style={styles.screen}>
         <StatusBar barStyle="light-content" />
         <View style={[styles.topBar, { paddingTop: top + 8 }]}>
-          <Pressable onPress={() => router.back()} style={styles.backRow} hitSlop={12}>
-            <Ionicons name="chevron-back" size={22} color="#F8FAFC" />
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backRow}
+            hitSlop={12}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={22}
+              color="#F8FAFC"
+            />
             <Text style={styles.backLabel}>Back</Text>
           </Pressable>
         </View>
@@ -149,193 +168,341 @@ export default function LaunchroomDetailScreen() {
 
   const budgetDisplay = `₦${Number(campaign.budget).toLocaleString("en-NG")}`;
 
-  return (
-    <View style={styles.screen}>
-      <StatusBar barStyle="light-content" />
-      <View style={[styles.topBar, { paddingTop: top + 8 }]}>
-        <Pressable onPress={() => router.back()} style={styles.backRow} hitSlop={12}>
-          <Ionicons name="chevron-back" size={22} color="#F8FAFC" />
-          <Text style={styles.backLabel}>Back</Text>
-        </Pressable>
-      </View>
+  if (isScheduled) {
+    return (
+      <View style={styles.screen}>
+        <StatusBar barStyle="light-content" />
+        <View style={[styles.topBar, { paddingTop: top + 8 }]}>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backRow}
+            hitSlop={12}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={22}
+              color="#F8FAFC"
+            />
+            <Text style={styles.backLabel}>Back</Text>
+          </Pressable>
+        </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor="#ff003c"
-            colors={["#ff003c"]}
-          />
-        }
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: bottom + 24 },
-        ]}
-      >
-        {/* Hero */}
-        <View style={styles.heroCard}>
+        <View style={styles.upcomingContainer}>
           {campaign.artworkUrl ? (
             <Image
               source={{ uri: campaign.artworkUrl }}
-              style={styles.heroImage}
+              style={StyleSheet.absoluteFillObject}
               contentFit="cover"
+              blurRadius={40}
             />
-          ) : (
-            <View style={[styles.heroImage, styles.heroPlaceholder]}>
-              <Ionicons name="musical-notes" size={48} color="#64748B" />
-            </View>
-          )}
+          ) : null}
+          <LinearGradient
+            colors={["rgba(5,5,7,0.85)", "rgba(5,5,7,0.6)", "rgba(5,5,7,0.92)"]}
+            style={StyleSheet.absoluteFillObject}
+          />
 
-          <View style={styles.heroInfo}>
-            <View style={styles.statusRow}>
-              <View
-                style={[
-                  styles.statusPill,
-                  isScheduled ? styles.statusScheduled : styles.statusLive,
-                ]}
-              >
-                <Text
+          <View style={styles.upcomingContent}>
+            <View style={styles.upcomingArtworkWrap}>
+              {campaign.artworkUrl ? (
+                <Image
+                  source={{ uri: campaign.artworkUrl }}
+                  style={styles.upcomingArtwork}
+                  contentFit="cover"
+                />
+              ) : (
+                <View
                   style={[
-                    styles.statusPillText,
-                    isScheduled ? styles.statusScheduledText : styles.statusLiveText,
+                    styles.upcomingArtwork,
+                    styles.upcomingArtworkPlaceholder,
                   ]}
                 >
-                  {isScheduled ? "Upcoming" : countdown.isExpired ? "Ended" : "Live"}
-                </Text>
-              </View>
-              <Text style={styles.countdownText}>
-                {isScheduled
-                  ? countdown.isExpired
-                    ? "Starting soon"
-                    : `Starts in ${countdown.label.replace(" left", "")}`
-                  : countdown.label}
-              </Text>
+                  <Ionicons
+                    name="musical-notes"
+                    size={36}
+                    color="#64748B"
+                  />
+                </View>
+              )}
             </View>
 
-            <Text style={styles.heroTitle}>{campaign.songTitle}</Text>
-            <Text style={styles.heroArtist}>
+            <View style={styles.upcomingPill}>
+              <View style={styles.upcomingPillDot} />
+              <Text style={styles.upcomingPillText}>UPCOMING</Text>
+            </View>
+
+            <Text
+              style={styles.upcomingTitle}
+              numberOfLines={2}
+            >
+              {campaign.songTitle}
+            </Text>
+            <Text style={styles.upcomingArtist}>
               {campaign.artistName || "Unknown Artist"}
             </Text>
 
-            <View style={styles.budgetBadge}>
-              <Text style={styles.budgetText}>{budgetDisplay} Giveaway</Text>
+            <View style={styles.timerGrid}>
+              <CountdownUnit
+                value={countdown.days}
+                label="Days"
+              />
+              <Text style={styles.timerColon}>:</Text>
+              <CountdownUnit
+                value={countdown.hours}
+                label="Hours"
+              />
+              <Text style={styles.timerColon}>:</Text>
+              <CountdownUnit
+                value={countdown.minutes}
+                label="Mins"
+              />
+              <Text style={styles.timerColon}>:</Text>
+              <CountdownUnit
+                value={countdown.seconds}
+                label="Secs"
+              />
             </View>
+
+            <View style={styles.upcomingBudgetBadge}>
+              <Ionicons
+                name="gift-outline"
+                size={14}
+                color="#FBBF24"
+              />
+              <Text style={styles.upcomingBudgetText}>
+                {budgetDisplay} Giveaway
+              </Text>
+            </View>
+
+            <Text style={styles.upcomingHint}>
+              This launchroom hasn&apos;t launched yet. Come back when the
+              countdown hits zero!
+            </Text>
           </View>
         </View>
+      </View>
+    );
+  }
 
-        {/* Player */}
-        {campaign.audioFileUrl ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Snippet</Text>
-            <View style={styles.playerCard}>
-              <Pressable onPress={togglePlay} style={styles.playBtn}>
-                <Ionicons
-                  name={isPlaying ? "pause" : "play"}
-                  size={24}
-                  color="#fff"
-                />
-              </Pressable>
-              <View style={styles.progressWrap}>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${Math.max(progress * 100, 2)}%` },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.durationText}>
-                  {Math.floor(status.currentTime / 1000)}s /{" "}
-                  {Math.floor(status.duration / 1000)}s
-                </Text>
-              </View>
-              <Pressable
-                onPress={handleListen}
-                disabled={isListening}
-                style={({ pressed }) => [
-                  styles.listenBtn,
-                  pressed && { opacity: 0.8 },
-                ]}
-              >
-                <Text style={styles.listenBtnText}>
-                  {isListening ? "..." : "Record Listen"}
-                </Text>
-              </Pressable>
-            </View>
+  const hasAudio = !!campaign.audioFileUrl;
+
+  return (
+    <View style={styles.screen}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Blurred artwork fills the whole screen */}
+      {campaign.artworkUrl ? (
+        <Image
+          source={{ uri: campaign.artworkUrl }}
+          style={StyleSheet.absoluteFillObject}
+          contentFit="cover"
+          blurRadius={40}
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFillObject, styles.bgPlaceholder]}>
+          <Ionicons
+            name="musical-notes"
+            size={72}
+            color="#1E293B"
+          />
+        </View>
+      )}
+
+      {/* Mute the blurred backdrop */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={["rgba(5,5,7,0.55)", "rgba(5,5,7,0.45)", "rgba(5,5,7,0.75)"]}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* Contained artwork (no crop), centered over the backdrop */}
+      {campaign.artworkUrl ? (
+        <Image
+          source={{ uri: campaign.artworkUrl }}
+          style={StyleSheet.absoluteFillObject}
+          contentFit="contain"
+        />
+      ) : null}
+
+      {/* Legibility gradient (darker at top & bottom) */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={[
+          "rgba(5,5,7,0.5)",
+          "rgba(5,5,7,0)",
+          "rgba(5,5,7,0)",
+          "rgba(5,5,7,0.9)",
+        ]}
+        locations={[0, 0.18, 0.5, 1]}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* Tap-to-play/pause layer */}
+      {hasAudio ? (
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={togglePlay}
+        />
+      ) : null}
+
+      {/* Center play indicator when paused */}
+      {hasAudio && !isPlaying ? (
+        <View
+          pointerEvents="none"
+          style={styles.centerPlay}
+        >
+          <View style={styles.centerPlayCircle}>
+            <Ionicons
+              name="play"
+              size={38}
+              color="#FFFFFF"
+            />
           </View>
-        ) : null}
+        </View>
+      ) : null}
 
-        {/* Listen Full Song */}
-        {campaign.songLink ? (
-          <Pressable
-            onPress={handleListenFull}
-            style={({ pressed }) => [
-              styles.fullSongBtn,
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <Ionicons name="musical-notes-outline" size={18} color="#fff" />
-            <Text style={styles.fullSongText}>Listen Full Song</Text>
-          </Pressable>
-        ) : null}
+      {/* Top bar */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.topBar, { paddingTop: top + 8 }]}
+      >
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backCircle}
+          hitSlop={12}
+        >
+          <Ionicons
+            name="chevron-back"
+            size={24}
+            color="#F8FAFC"
+          />
+        </Pressable>
+      </View>
 
-        {/* Reactions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reactions</Text>
-          <LaunchroomReactions campaignId={campaignId} />
+      {/* Right action rail */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.railWrap, { bottom: bottom + 150 }]}
+      >
+        <LaunchroomActionRail
+          campaignId={campaignId}
+          onCommentPress={() => setShowComments(true)}
+          onLeaderboardPress={() => setShowLeaderboard(true)}
+          onSharePress={handleShare}
+          onDeletePress={handleDelete}
+          onAnalyticsPress={() => setShowAnalytics(true)}
+          canViewAnalytics={isOwner}
+          canDelete={!!canDelete}
+          isDeleting={isDeleting}
+        />
+      </View>
+
+      {/* Bottom caption */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.caption, { paddingBottom: bottom + 34 }]}
+      >
+        <View style={styles.statusRow}>
+          <View style={styles.statusPill}>
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor: countdown.isExpired ? "#94A3B8" : "#22C55E",
+                },
+              ]}
+            />
+            <Text style={styles.statusPillText}>
+              {countdown.isExpired ? "Ended" : "Live"}
+            </Text>
+          </View>
+          {countdown.label ? (
+            <Text style={styles.countdownText}>{countdown.label}</Text>
+          ) : null}
         </View>
 
-        {/* Leaderboard */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Leaderboard</Text>
-          <LaunchroomLeaderboard campaignId={campaignId} />
-        </View>
+        <Text
+          style={styles.title}
+          numberOfLines={2}
+        >
+          {campaign.songTitle}
+        </Text>
+        <Text
+          style={styles.artist}
+          numberOfLines={1}
+        >
+          {campaign.artistName || "Unknown Artist"}
+        </Text>
 
-        {/* Comments */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Comments</Text>
-          <LaunchroomComments campaignId={campaignId} />
-        </View>
-
-        {/* Actions */}
-        <View style={styles.actionsRow}>
-          <Pressable
-            onPress={handleShare}
-            style={({ pressed }) => [
-              styles.actionBtn,
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <Ionicons name="share-social-outline" size={18} color="#F8FAFC" />
-            <Text style={styles.actionText}>Share</Text>
-          </Pressable>
-
-          {canDelete ? (
+        <View style={styles.metaRow}>
+          <View style={styles.budgetBadge}>
+            <Ionicons
+              name="gift-outline"
+              size={13}
+              color="#FBBF24"
+            />
+            <Text style={styles.budgetText}>{budgetDisplay} Giveaway</Text>
+          </View>
+          {campaign.songLink ? (
             <Pressable
-              onPress={handleDelete}
-              disabled={isDeleting}
+              onPress={handleListenFull}
               style={({ pressed }) => [
-                styles.actionBtn,
-                styles.deleteBtn,
+                styles.fullSongPill,
                 pressed && { opacity: 0.85 },
               ]}
             >
-              {isDeleting ? (
-                <ActivityIndicator color="#FCA5A5" size="small" />
-              ) : (
-                <>
-                  <Ionicons name="trash-outline" size={18} color="#FCA5A5" />
-                  <Text style={[styles.actionText, { color: "#FCA5A5" }]}>
-                    Delete
-                  </Text>
-                </>
-              )}
+              <Ionicons
+                name="play-circle"
+                size={16}
+                color="#FFFFFF"
+              />
+              <Text style={styles.fullSongText}>Full song</Text>
             </Pressable>
           ) : null}
         </View>
-      </ScrollView>
+      </View>
+
+      {/* Snippet progress bar */}
+      {hasAudio ? (
+        <View
+          pointerEvents="none"
+          style={[styles.progressBar, { bottom: bottom + 16 }]}
+        >
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${Math.max(progress * 100, 1)}%` },
+            ]}
+          />
+        </View>
+      ) : null}
+
+      <LaunchroomCommentsSheet
+        visible={showComments}
+        onClose={() => setShowComments(false)}
+        campaignId={campaignId}
+      />
+      <LaunchroomLeaderboardSheet
+        visible={showLeaderboard}
+        onClose={() => setShowLeaderboard(false)}
+        campaignId={campaignId}
+      />
+      <LaunchroomAnalyticsSheet
+        visible={showAnalytics}
+        onClose={() => setShowAnalytics(false)}
+        campaignId={campaignId}
+      />
+    </View>
+  );
+}
+
+function CountdownUnit({ value, label }: { value: number; label: string }) {
+  const display = String(value).padStart(2, "0");
+  return (
+    <View style={styles.timerUnit}>
+      <View style={styles.timerUnitBox}>
+        <Text style={styles.timerUnitValue}>{display}</Text>
+      </View>
+      <Text style={styles.timerUnitLabel}>{label}</Text>
     </View>
   );
 }
@@ -351,106 +518,255 @@ const styles = StyleSheet.create({
   },
   backLabel: { color: "#E2E8F0", fontSize: 16, fontFamily: "Nunito-SemiBold" },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { paddingHorizontal: 20, gap: 20, paddingTop: 8 },
-
-  heroCard: {
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "#1E293B",
+  // ── Immersive (live) ──
+  bgPlaceholder: {
     backgroundColor: "#0B0E12",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  centerPlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  centerPlayCircle: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingLeft: 4,
+  },
+  backCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.38)",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
+  railWrap: {
+    position: "absolute",
+    right: 12,
+  },
+  caption: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingRight: 88,
+    gap: 8,
+  },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusPillText: { color: "#FFFFFF", fontSize: 12, fontFamily: "Nunito-Bold" },
+  countdownText: {
+    color: "#E2E8F0",
+    fontSize: 12,
+    fontFamily: "Nunito-SemiBold",
+    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  title: {
+    color: "#FFFFFF",
+    fontSize: 24,
+    fontFamily: "Nunito-Bold",
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  artist: {
+    color: "#E2E8F0",
+    fontSize: 15,
+    fontFamily: "Nunito-SemiBold",
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 5,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 4,
+  },
+  budgetBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(251,191,36,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(251,191,36,0.25)",
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  budgetText: { color: "#FBBF24", fontSize: 13, fontFamily: "Nunito-Bold" },
+  fullSongPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F43F5E",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  fullSongText: { color: "#FFFFFF", fontSize: 13, fontFamily: "Nunito-Bold" },
+  progressBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.22)",
     overflow: "hidden",
   },
-  heroImage: { width: "100%", height: 220 },
-  heroPlaceholder: {
+  progressFill: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "#F43F5E",
+  },
+
+  upcomingContainer: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  upcomingContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  upcomingArtworkWrap: {
+    width: 100,
+    height: 100,
+    borderRadius: 24,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "rgba(244,63,94,0.4)",
+    marginBottom: 8,
+  },
+  upcomingArtwork: {
+    width: "100%",
+    height: "100%",
+  },
+  upcomingArtworkPlaceholder: {
     backgroundColor: "#12161D",
     alignItems: "center",
     justifyContent: "center",
   },
-  heroInfo: { padding: 16, gap: 8 },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  statusPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
-  statusLive: { backgroundColor: "#0D1F16" },
-  statusScheduled: { backgroundColor: "#2A1B0D" },
-  statusPillText: { fontSize: 12, fontFamily: "Nunito-Bold" },
-  statusLiveText: { color: "#22C55E" },
-  statusScheduledText: { color: "#FBBF24" },
-  countdownText: { color: "#94A3B8", fontSize: 12, fontFamily: "Nunito-Regular" },
-  heroTitle: { color: "#FFFFFF", fontSize: 22, fontFamily: "Nunito-Bold" },
-  heroArtist: { color: "#94A3B8", fontSize: 15, fontFamily: "Nunito-Regular" },
-  budgetBadge: {
-    backgroundColor: "#1B0F16",
+  upcomingPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(251,191,36,0.12)",
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 999,
-    alignSelf: "flex-start",
   },
-  budgetText: { color: "#F43F5E", fontSize: 13, fontFamily: "Nunito-Bold" },
-
-  section: { gap: 12 },
-  sectionTitle: { color: "#FFFFFF", fontSize: 18, fontFamily: "Nunito-Bold" },
-
-  playerCard: {
+  upcomingPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#FBBF24",
+  },
+  upcomingPillText: {
+    color: "#FBBF24",
+    fontSize: 11,
+    fontFamily: "Nunito-Bold",
+    letterSpacing: 1.2,
+  },
+  upcomingTitle: {
+    color: "#FFFFFF",
+    fontSize: 26,
+    fontFamily: "Nunito-Bold",
+    textAlign: "center",
+    lineHeight: 32,
+  },
+  upcomingArtist: {
+    color: "#94A3B8",
+    fontSize: 15,
+    fontFamily: "Nunito-Regular",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  timerGrid: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 6,
+    marginVertical: 12,
+  },
+  timerUnit: {
+    alignItems: "center",
+    gap: 6,
+  },
+  timerUnitBox: {
+    width: 64,
+    height: 72,
     borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: "#1E293B",
-    backgroundColor: "#0B0E12",
-    padding: 14,
-  },
-  playBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#F43F5E",
+    borderColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
-  progressWrap: { flex: 1, gap: 4 },
-  progressTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#1E293B",
+  timerUnitValue: {
+    color: "#FFFFFF",
+    fontSize: 32,
+    fontFamily: "Nunito-Bold",
+    fontVariant: ["tabular-nums"],
   },
-  progressFill: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#F43F5E",
+  timerUnitLabel: {
+    color: "#64748B",
+    fontSize: 11,
+    fontFamily: "Nunito-SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
-  durationText: { color: "#64748B", fontSize: 11, fontFamily: "Nunito-Regular" },
-  listenBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: "#1E293B",
+  timerColon: {
+    color: "#F43F5E",
+    fontSize: 28,
+    fontFamily: "Nunito-Bold",
+    marginBottom: 20,
   },
-  listenBtnText: { color: "#E2E8F0", fontSize: 12, fontFamily: "Nunito-Bold" },
-
-  fullSongBtn: {
+  upcomingBudgetBadge: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#F43F5E",
-    borderRadius: 14,
-    paddingVertical: 14,
-  },
-  fullSongText: { color: "#fff", fontSize: 15, fontFamily: "Nunito-Bold" },
-
-  actionsRow: { flexDirection: "row", gap: 12 },
-  actionBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 14,
+    gap: 6,
+    backgroundColor: "rgba(251,191,36,0.08)",
     borderWidth: 1,
-    borderColor: "#1E293B",
-    backgroundColor: "#0B0E12",
+    borderColor: "rgba(251,191,36,0.15)",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    marginTop: 4,
   },
-  deleteBtn: { borderColor: "#3A1E24" },
-  actionText: { color: "#F8FAFC", fontSize: 14, fontFamily: "Nunito-Bold" },
+  upcomingBudgetText: {
+    color: "#FBBF24",
+    fontSize: 14,
+    fontFamily: "Nunito-Bold",
+  },
+  upcomingHint: {
+    color: "#64748B",
+    fontSize: 13,
+    fontFamily: "Nunito-Regular",
+    textAlign: "center",
+    lineHeight: 19,
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
 });

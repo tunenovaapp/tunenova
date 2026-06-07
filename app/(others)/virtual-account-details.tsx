@@ -168,7 +168,7 @@ export default function VirtualAccountDetailsScreen() {
         return;
       }
 
-      router.replace("/(tabs)/analytics");
+      router.replace("/(tabs)/promote");
       return;
     }
 

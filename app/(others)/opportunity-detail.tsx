@@ -1,6 +1,12 @@
+import { useProfile } from "@/api/auth/auth";
+import {
+  CampaignMetricsGrid,
+  type CampaignMetric,
+} from "@/components/campaign-detail/campaign-metrics-grid";
 import { type Opportunity } from "@/constants/opportunities";
 import {
   useOpportunity,
+  useOpportunityAnalytics,
   useOpportunityShareLink,
   useOpportunityShareStats,
 } from "@/hooks/useOpportunities";
@@ -62,6 +68,12 @@ export default function OpportunityDetailScreen() {
     useOpportunityShareStats(opportunityId);
   const { mutateAsync: getShareLink, isPending: isShareLinkPending } =
     useOpportunityShareLink();
+  const { data: profileData } = useProfile();
+  const isOwner =
+    opportunity?.userId != null &&
+    String(opportunity.userId) === String(profileData?.data?.id);
+  const { data: analytics, isPending: isAnalyticsPending } =
+    useOpportunityAnalytics(opportunityId, { enabled: isOwner });
 
   const [downloading, setDownloading] = useState(false);
 
@@ -171,6 +183,34 @@ export default function OpportunityDetailScreen() {
 
   const paragraphs = opportunity.description.split("\n\n");
   const clicksDisplay = shareStats?.uniqueClicks ?? 0;
+  // Total pool originally set for this opportunity (remaining + already paid
+  // out), so it stays accurate even after the pool is depleted / expired.
+  const totalEarningPoolNgn =
+    opportunity.earningPoolNgn + opportunity.totalPaidOutNgn;
+
+  const ownerMetrics: CampaignMetric[] = [
+    {
+      label: "Total clicks",
+      value: formatCount(analytics?.totalClicks ?? 0),
+      icon: "finger-print-outline",
+      accent: "#1D4ED8",
+      helper: "All taps on shared links",
+    },
+    {
+      label: "Rewarded clicks",
+      value: formatCount(analytics?.uniqueClicks ?? 0),
+      icon: "checkmark-circle-outline",
+      accent: "#15803D",
+      helper: "Unique clicks that earned a payout",
+    },
+    {
+      label: "Sharers",
+      value: formatCount(analytics?.totalShares ?? 0),
+      icon: "people-outline",
+      accent: "#B45309",
+      helper: "People sharing this opportunity",
+    },
+  ];
 
   return (
     <View style={styles.screen}>
@@ -224,7 +264,7 @@ export default function OpportunityDetailScreen() {
         <View style={styles.poolCard}>
           <Text style={styles.poolLabel}>Amount users earn from</Text>
           <Text style={styles.poolValue}>
-            {formatCurrency(Math.round(opportunity.earningPoolNgn))}
+            {formatCurrency(Math.round(totalEarningPoolNgn))}
           </Text>
           <Text style={styles.poolHint}>
             {opportunity.isExpired
@@ -245,18 +285,37 @@ export default function OpportunityDetailScreen() {
           </Text>
         </View>
 
-        <View style={styles.clicksCard}>
-          <Text style={styles.clicksLabel}>Your referral clicks</Text>
-          {isStatsPending && !shareStats ? (
-            <ActivityIndicator color="#7DD3FC" style={styles.clicksSpinner} />
-          ) : (
-            <Text style={styles.clicksValue}>{formatCount(clicksDisplay)}</Text>
-          )}
-          <Text style={styles.clicksHint}>
-            Qualifying taps on your shared tracking link. Updates when Tunenova
-            confirms traffic; you can sync counts from your account later.
-          </Text>
-        </View>
+        {isOwner ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your opportunity analytics</Text>
+            {isAnalyticsPending && !analytics ? (
+              <ActivityIndicator color="#7DD3FC" style={styles.clicksSpinner} />
+            ) : (
+              <>
+                <CampaignMetricsGrid metrics={ownerMetrics} />
+                {(analytics?.totalShares ?? 0) === 0 ? (
+                  <Text style={styles.analyticsEmpty}>
+                    No one has shared this opportunity yet. These stats update as
+                    people start sharing your link.
+                  </Text>
+                ) : null}
+              </>
+            )}
+          </View>
+        ) : (
+          <View style={styles.clicksCard}>
+            <Text style={styles.clicksLabel}>Your referral clicks</Text>
+            {isStatsPending && !shareStats ? (
+              <ActivityIndicator color="#7DD3FC" style={styles.clicksSpinner} />
+            ) : (
+              <Text style={styles.clicksValue}>{formatCount(clicksDisplay)}</Text>
+            )}
+            <Text style={styles.clicksHint}>
+              Qualifying taps on your shared tracking link. Updates when Tunenova
+              confirms traffic; you can sync counts from your account later.
+            </Text>
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Full details</Text>
@@ -294,30 +353,32 @@ export default function OpportunityDetailScreen() {
             </TouchableOpacity>
           ) : null}
 
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => {
-              void handleGetLink(opportunity);
-            }}
-            disabled={Boolean(opportunity.isExpired) || isShareLinkPending}
-            style={[
-              styles.primaryButton,
-              opportunity.isExpired && styles.primaryButtonDisabled,
-            ]}
-          >
-            {isShareLinkPending ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text
-                style={[
-                  styles.primaryButtonText,
-                  opportunity.isExpired && styles.primaryButtonTextDisabled,
-                ]}
-              >
-                {opportunity.isExpired ? "Expired" : "Get Link"}
-              </Text>
-            )}
-          </TouchableOpacity>
+          {!isOwner ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                void handleGetLink(opportunity);
+              }}
+              disabled={Boolean(opportunity.isExpired) || isShareLinkPending}
+              style={[
+                styles.primaryButton,
+                opportunity.isExpired && styles.primaryButtonDisabled,
+              ]}
+            >
+              {isShareLinkPending ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text
+                  style={[
+                    styles.primaryButtonText,
+                    opportunity.isExpired && styles.primaryButtonTextDisabled,
+                  ]}
+                >
+                  {opportunity.isExpired ? "Expired" : "Get Link"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
       </ScrollView>
     </View>
@@ -466,6 +527,12 @@ const styles = StyleSheet.create({
   clicksSpinner: {
     alignSelf: "flex-start",
     paddingVertical: 8,
+  },
+  analyticsEmpty: {
+    color: "#94A3B8",
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: "Nunito-Regular",
   },
   section: {
     gap: 12,

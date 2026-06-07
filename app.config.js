@@ -11,7 +11,7 @@ module.exports = () => ({
   expo: {
     name: appName,
     slug: "tunenova",
-    version: "2.2.4",
+    version: "2.2.5",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
     scheme: "tunenova",
@@ -64,6 +64,7 @@ module.exports = () => ({
       "expo-audio",
       "expo-notifications",
       "expo-web-browser",
+      "@react-native-community/datetimepicker",
     ],
     experiments: {
       typedRoutes: true,

@@ -1,7 +1,7 @@
 {
   "name": "Tunenova",
   "main": "expo-router/entry",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "scripts": {
     "start": "expo start",
     "start:dev": "cross-env APP_VARIANT=development expo start",
@@ -15,6 +15,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@hookform/resolvers": "^5.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.6.0",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",

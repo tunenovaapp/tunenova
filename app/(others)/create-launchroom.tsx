@@ -2,6 +2,9 @@ import { useCreateLaunchroomCampaign } from "@/api/launchroom/launchroom";
 import { useBalance } from "@/api/wallet/wallet";
 import { SnippetUploadCard } from "@/components/promote/snippet-upload-card";
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
@@ -22,16 +25,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const GENRE_OPTIONS = [
-  "Afrobeats",
-  "Pop",
-  "Hip-hop",
-  "Gospel",
-  "Country",
-  "R&B",
-];
-
-const AUDIENCE_OPTIONS = ["Spotify", "YouTube", "Apple Music"];
 
 export default function CreateLaunchroomScreen() {
   const router = useRouter();
@@ -41,11 +34,11 @@ export default function CreateLaunchroomScreen() {
   const [songTitle, setSongTitle] = useState("");
   const [artistName, setArtistName] = useState("");
   const [songLink, setSongLink] = useState("");
-  const [genre, setGenre] = useState("");
-  const [audience, setAudience] = useState<string[]>([]);
   const [budget, setBudget] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
   const [snippet, setSnippet] =
     useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [artwork, setArtwork] = useState<{
@@ -79,6 +72,31 @@ export default function CreateLaunchroomScreen() {
     }
   }, []);
 
+  const formatDate = (date: Date) =>
+    date.toLocaleDateString("en-NG", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  const onStartDateChange = useCallback(
+    (_event: DateTimePickerEvent, selected?: Date) => {
+      if (Platform.OS === "android") setShowStartPicker(false);
+      if (selected) setStartDate(selected);
+    },
+    [],
+  );
+
+  const onEndDateChange = useCallback(
+    (_event: DateTimePickerEvent, selected?: Date) => {
+      if (Platform.OS === "android") setShowEndPicker(false);
+      if (selected) setEndDate(selected);
+    },
+    [],
+  );
+
   const handlePickArtwork = useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
@@ -100,23 +118,19 @@ export default function CreateLaunchroomScreen() {
     if (!songTitle.trim()) return Alert.alert("Missing", "Song title is required");
     if (!artistName.trim()) return Alert.alert("Missing", "Artist name is required");
     if (!songLink.trim()) return Alert.alert("Missing", "Fan link is required");
-    if (!genre) return Alert.alert("Missing", "Select a genre");
-    if (audience.length === 0) return Alert.alert("Missing", "Select at least one platform");
     if (!snippet) return Alert.alert("Missing", "Upload an audio snippet");
     if (!budget || Number(budget) < 1000) return Alert.alert("Missing", "Budget must be at least ₦1,000");
     if (!startDate) return Alert.alert("Missing", "Start date is required");
     if (!endDate) return Alert.alert("Missing", "End date is required");
-    if (new Date(endDate) <= new Date(startDate)) return Alert.alert("Invalid", "End date must be after start date");
+    if (endDate <= startDate) return Alert.alert("Invalid", "End date must be after start date");
 
     create({
       songTitle: songTitle.trim(),
       artistName: artistName.trim(),
       songLink: songLink.trim(),
-      genre,
-      targetAudience: audience,
       budget: Number(budget),
-      startDate: new Date(startDate).toISOString(),
-      endDate: new Date(endDate).toISOString(),
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
       audioFile: {
         uri: snippet.uri,
         name: snippet.name,
@@ -200,64 +214,6 @@ export default function CreateLaunchroomScreen() {
             />
           </View>
 
-          {/* Genre */}
-          <View style={styles.fieldBlock}>
-            <Text style={styles.fieldLabel}>Genre</Text>
-            <View style={styles.chipRow}>
-              {GENRE_OPTIONS.map((g) => (
-                <Pressable
-                  key={g}
-                  onPress={() => setGenre(g.toLowerCase())}
-                  style={[
-                    styles.chip,
-                    genre === g.toLowerCase() && styles.chipActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      genre === g.toLowerCase() && styles.chipTextActive,
-                    ]}
-                  >
-                    {g}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Target Audience */}
-          <View style={styles.fieldBlock}>
-            <Text style={styles.fieldLabel}>Target Audience</Text>
-            <View style={styles.chipRow}>
-              {AUDIENCE_OPTIONS.map((a) => {
-                const selected = audience.includes(a.toLowerCase());
-                return (
-                  <Pressable
-                    key={a}
-                    onPress={() =>
-                      setAudience((prev) =>
-                        selected
-                          ? prev.filter((x) => x !== a.toLowerCase())
-                          : [...prev, a.toLowerCase()],
-                      )
-                    }
-                    style={[styles.chip, selected && styles.chipActive]}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        selected && styles.chipTextActive,
-                      ]}
-                    >
-                      {a}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
           {/* Audio Snippet */}
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Audio Snippet</Text>
@@ -312,25 +268,59 @@ export default function CreateLaunchroomScreen() {
           {/* Start Date */}
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Start Date</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD (e.g. 2026-06-01)"
-              placeholderTextColor="#64748B"
-              value={startDate}
-              onChangeText={setStartDate}
-            />
+            <Pressable
+              onPress={() => setShowStartPicker(true)}
+              style={styles.dateButton}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#94A3B8" />
+              <Text
+                style={[
+                  styles.dateButtonText,
+                  !startDate && styles.dateButtonPlaceholder,
+                ]}
+              >
+                {startDate ? formatDate(startDate) : "Select start date & time"}
+              </Text>
+            </Pressable>
+            {showStartPicker && (
+              <DateTimePicker
+                value={startDate || new Date()}
+                mode="datetime"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                minimumDate={new Date()}
+                onChange={onStartDateChange}
+                themeVariant="dark"
+              />
+            )}
           </View>
 
           {/* End Date */}
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>End Date</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD (e.g. 2026-06-15)"
-              placeholderTextColor="#64748B"
-              value={endDate}
-              onChangeText={setEndDate}
-            />
+            <Pressable
+              onPress={() => setShowEndPicker(true)}
+              style={styles.dateButton}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#94A3B8" />
+              <Text
+                style={[
+                  styles.dateButtonText,
+                  !endDate && styles.dateButtonPlaceholder,
+                ]}
+              >
+                {endDate ? formatDate(endDate) : "Select end date & time"}
+              </Text>
+            </Pressable>
+            {showEndPicker && (
+              <DateTimePicker
+                value={endDate || startDate || new Date()}
+                mode="datetime"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                minimumDate={startDate || new Date()}
+                onChange={onEndDateChange}
+                themeVariant="dark"
+              />
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -389,18 +379,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Nunito-Regular",
   },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    backgroundColor: "#0B0E12",
-  },
-  chipActive: { borderColor: "#F43F5E", backgroundColor: "#1B0F16" },
-  chipText: { color: "#94A3B8", fontSize: 13, fontFamily: "Nunito-SemiBold" },
-  chipTextActive: { color: "#F43F5E" },
   artworkPreview: { position: "relative", alignSelf: "flex-start" },
   artworkImage: { width: 120, height: 120, borderRadius: 14 },
   artworkRemove: { position: "absolute", top: -6, right: -6 },
@@ -442,4 +420,23 @@ const styles = StyleSheet.create({
   submitBtnPressed: { opacity: 0.85 },
   submitBtnDisabled: { opacity: 0.5 },
   submitText: { color: "#fff", fontSize: 16, fontFamily: "Nunito-Bold" },
+  dateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    backgroundColor: "#0B0E12",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  dateButtonText: {
+    color: "#F8FAFC",
+    fontSize: 15,
+    fontFamily: "Nunito-Regular",
+  },
+  dateButtonPlaceholder: {
+    color: "#64748B",
+  },
 });

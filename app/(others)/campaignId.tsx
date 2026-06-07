@@ -339,7 +339,7 @@ export default function CampaignDetailScreen() {
               queryClient.invalidateQueries({
                 queryKey: ["campaign", campaign.id],
               });
-              router.replace("/(tabs)/analytics");
+              router.replace("/(tabs)/promote");
             } catch (deleteError: any) {
               setPageBanner({
                 tone: "error",
@@ -471,7 +471,7 @@ export default function CampaignDetailScreen() {
 
           setTimeout(() => {
             setPromoteSheetVisible(false);
-            router.replace("/(tabs)/analytics");
+            router.replace("/(tabs)/promote");
           }, 700);
         },
         onError: (duplicateError: any) => {
@@ -530,7 +530,7 @@ export default function CampaignDetailScreen() {
               title="Campaign not found"
               description="This campaign is no longer available or the link is incomplete."
               actionLabel="Back to analytics"
-              onAction={() => router.replace("/(tabs)/analytics")}
+              onAction={() => router.replace("/(tabs)/promote")}
             />
           ) : (
             <>

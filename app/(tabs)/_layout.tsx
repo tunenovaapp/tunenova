@@ -1,7 +1,7 @@
 import { DailyStreakSync } from "@/components/DailyStreakSync";
 import { PlayerProvider } from "@/components/PlayerContext";
 import { RequireAuth } from "@/components/RequireAuth";
-import { FontAwesome, Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -43,9 +43,9 @@ export default function TabLayout() {
             }}
           />
           <Tabs.Screen
-            name="launchroom"
+            name="engage"
             options={{
-              title: "Launchroom",
+              title: "Engage",
               tabBarIcon: ({ color }) => (
                 <Ionicons name="rocket-outline" size={26} color={color} />
               ),
@@ -56,20 +56,11 @@ export default function TabLayout() {
             options={{
               title: "Promote",
               tabBarIcon: ({ color }) => (
-                <FontAwesome
-                  name="music"
+                <Ionicons
+                  name="megaphone-outline"
                   size={26}
                   color={color}
                 />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="opportunities"
-            options={{
-              title: "Opportunities",
-              tabBarIcon: ({ color }) => (
-                <Ionicons name="briefcase-outline" size={26} color={color} />
               ),
             }}
           />
@@ -87,13 +78,13 @@ export default function TabLayout() {
             }}
           />
           <Tabs.Screen
-            name="analytics"
+            name="leaderboard"
             options={{
-              title: "Analytics",
+              title: "Ranks",
               tabBarIcon: ({ color }) => (
-                <MaterialIcons
-                  name="analytics"
-                  size={28}
+                <Ionicons
+                  name="trophy-outline"
+                  size={26}
                   color={color}
                 />
               ),

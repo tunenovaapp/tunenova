@@ -51,6 +51,19 @@ export interface LeaderboardResponse {
   data: LeaderboardEntry[];
 }
 
+export interface LaunchroomAnalytics {
+  totalShares: number;
+  totalListens: number;
+  totalFanLinkClicks: number;
+  totalReactions: number;
+  totalComments: number;
+}
+
+export interface LaunchroomAnalyticsResponse {
+  success: boolean;
+  data: LaunchroomAnalytics;
+}
+
 export interface ReactionItem {
   emoji: string;
   count: number;
@@ -70,6 +83,8 @@ export interface CampaignComment {
   name: string | null;
   text: string;
   createdAt: string;
+  parentId?: number | null;
+  replies?: CampaignComment[];
 }
 
 export interface CommentsResponse {
@@ -87,8 +102,8 @@ export interface CreateLaunchroomBody {
   songTitle: string;
   artistName: string;
   songLink: string;
-  genre: string;
-  targetAudience: string[];
+  genre?: string;
+  targetAudience?: string[];
   budget: number;
   startDate: string;
   endDate: string;
@@ -135,8 +150,9 @@ export function useCreateLaunchroomCampaign(
       fd.append("songTitle", body.songTitle.trim());
       fd.append("artistName", body.artistName.trim());
       fd.append("songLink", body.songLink.trim());
-      fd.append("genre", body.genre.trim());
-      fd.append("targetAudience", JSON.stringify(body.targetAudience));
+      if (body.genre) fd.append("genre", body.genre.trim());
+      if (body.targetAudience?.length)
+        fd.append("targetAudience", JSON.stringify(body.targetAudience));
       fd.append("budget", String(body.budget));
       fd.append("startDate", body.startDate);
       fd.append("endDate", body.endDate);
@@ -209,6 +225,24 @@ export function useCampaignLeaderboard(
   });
 }
 
+/* ─────────── Launchroom Analytics (owner-only) ─────────── */
+
+export function useLaunchroomAnalytics(
+  id: number | null,
+  options?: { enabled?: boolean },
+) {
+  return useQuery<LaunchroomAnalyticsResponse, AxiosError<ApiError>>({
+    queryKey: ["launchroom-analytics", id],
+    queryFn: async () => {
+      const { data } = await api.get<LaunchroomAnalyticsResponse>(
+        `/campaigns/${id}/launchroom-analytics`,
+      );
+      return data;
+    },
+    enabled: id !== null && (options?.enabled ?? true),
+  });
+}
+
 /* ─────────── Fan Link Click ─────────── */
 
 export function useFanLinkClick(
@@ -265,6 +299,31 @@ export function useReactToCampaign(
   });
 }
 
+/* ─────────── Un-react to Campaign (un-like) ─────────── */
+
+export function useUnreactToCampaign(
+  options?: UseMutationOptions<
+    any,
+    AxiosError<ApiError>,
+    { id: number; emoji: string }
+  >,
+) {
+  const qc = useQueryClient();
+  return useMutation<any, AxiosError<ApiError>, { id: number; emoji: string }>({
+    mutationFn: async ({ id, emoji }) => {
+      const { data } = await api.delete(`/campaigns/${id}/react`, {
+        params: { emoji },
+      });
+      return data;
+    },
+    ...options,
+    onSuccess: (data, variables, context) => {
+      qc.invalidateQueries({ queryKey: ["campaign-reactions", variables.id] });
+      options?.onSuccess?.(data, variables, context);
+    },
+  });
+}
+
 /* ─────────── Campaign Reactions ─────────── */
 
 export function useCampaignReactions(
@@ -294,13 +353,20 @@ export function useAddComment(
   options?: UseMutationOptions<
     any,
     AxiosError<ApiError>,
-    { id: number; text: string }
+    { id: number; text: string; parentId?: number }
   >,
 ) {
   const qc = useQueryClient();
-  return useMutation<any, AxiosError<ApiError>, { id: number; text: string }>({
-    mutationFn: async ({ id, text }) => {
-      const { data } = await api.post(`/campaigns/${id}/comment`, { text });
+  return useMutation<
+    any,
+    AxiosError<ApiError>,
+    { id: number; text: string; parentId?: number }
+  >({
+    mutationFn: async ({ id, text, parentId }) => {
+      const { data } = await api.post(`/campaigns/${id}/comment`, {
+        text,
+        parentId,
+      });
       return data;
     },
     ...options,
