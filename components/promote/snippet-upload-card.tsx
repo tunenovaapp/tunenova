@@ -3,12 +3,16 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { formatMs } from "@/utils/time";
+
 type SnippetUploadCardProps = {
   snippet: DocumentPicker.DocumentPickerAsset | null;
   error?: string;
+  /** Clip length in ms, once known. Shown alongside the file size. */
+  durationMs?: number | null;
   onPick: () => void;
   onClear: () => void;
-  onTrimPress: () => void;
+  onTrim: () => void;
 };
 
 const formatFileSize = (size?: number | null) => {
@@ -26,11 +30,20 @@ const formatFileSize = (size?: number | null) => {
 export function SnippetUploadCard({
   snippet,
   error,
+  durationMs,
   onPick,
   onClear,
-  onTrimPress,
+  onTrim,
 }: SnippetUploadCardProps) {
   const hasSnippet = Boolean(snippet?.name);
+
+  const readyLine = [
+    "Ready to upload",
+    durationMs ? formatMs(durationMs) : null,
+    formatFileSize(snippet?.size),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <View style={[styles.card, error && styles.cardError]}>
@@ -44,8 +57,8 @@ export function SnippetUploadCard({
           </Text>
           <Text style={styles.subtitle}>
             {hasSnippet
-              ? `Ready to upload · ${formatFileSize(snippet?.size)}`
-              : "Upload an MP3 up to 5 MB. Shorter, memorable clips usually perform best."}
+              ? readyLine
+              : "Upload an MP3 up to 5 MB. Clips can be up to 30 seconds — trim yours right here."}
           </Text>
         </View>
       </View>
@@ -72,15 +85,15 @@ export function SnippetUploadCard({
         ) : null}
       </View>
 
-      <Pressable
-        onPress={onTrimPress}
-        style={({ pressed }) => [styles.linkWrap, pressed && styles.pressed]}
-      >
-        <Ionicons name="open-outline" size={14} color="#FB7185" />
-        <Text style={styles.linkText}>
-          Need a tighter clip? Trim it with AudioTrimmer.
-        </Text>
-      </Pressable>
+      {hasSnippet ? (
+        <Pressable
+          onPress={onTrim}
+          style={({ pressed }) => [styles.linkWrap, pressed && styles.pressed]}
+        >
+          <Ionicons name="cut-outline" size={14} color="#FB7185" />
+          <Text style={styles.linkText}>Need a tighter clip? Trim it here.</Text>
+        </Pressable>
+      ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>

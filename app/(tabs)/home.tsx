@@ -8,10 +8,17 @@ import { HomeTipsModal } from "@/components/home/home-tips-modal";
 import { HomeUploadSheet } from "@/components/home/home-upload-sheet";
 import { NowPlayingCard } from "@/components/home/now-playing-card";
 import { usePlayer } from "@/components/PlayerContext";
+import { TrimSnippetModal } from "@/components/promote/trim-snippet-modal";
 import { NOVA_TIPS } from "@/constants/novaTips";
 import { useNotification } from "@/context/notificationsContext";
 import { useInboxNotifications } from "@/hooks/useInboxNotifications";
+import {
+  MAX_SNIPPET_MS,
+  getMp3DurationMs,
+  prepareAudioFile as prepareFileForUpload,
+} from "@/utils/audioTrim";
 import { RFValue } from "@/utils/responsiveFont";
+import { formatTime } from "@/utils/time";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -104,13 +111,6 @@ function showTransientMessage(message: string) {
   Alert.alert("Notice", message);
 }
 
-function formatTime(seconds?: number) {
-  const totalSeconds = Math.max(0, Math.floor(seconds ?? 0));
-  const minutes = Math.floor(totalSeconds / 60);
-  const remainingSeconds = totalSeconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-}
-
 function resolveAssetUri(uri?: string | null) {
   const value = uri?.trim();
 
@@ -161,27 +161,6 @@ function guessMimeFromName(name: string) {
     default:
       return "application/octet-stream";
   }
-}
-
-async function prepareFileForUpload(
-  originalUri: string,
-  originalName?: string | null,
-) {
-  let uri = originalUri;
-  let name = (originalName || `audio-${Date.now()}.mp3`).trim();
-
-  if (!/\.(mp3|m4a|wav|aac|ogg)$/i.test(name)) {
-    name += ".mp3";
-  }
-
-  if (uri.startsWith("content://")) {
-    const ext = name.split(".").pop() || "mp3";
-    const dest = `${FileSystem.cacheDirectory}upload-${Date.now()}.${ext}`;
-    await FileSystem.copyAsync({ from: uri, to: dest });
-    uri = dest;
-  }
-
-  return { uri, name };
 }
 
 function useCreateFreeCampaign() {
@@ -306,6 +285,11 @@ export default function ExplorePlayerScreen() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isFabEnabled, setIsFabEnabled] = useState(true);
   const [pickedAudio, setPickedAudio] = useState<PickedAudio | null>(null);
+  const [pickedAudioDurationMs, setPickedAudioDurationMs] = useState<
+    number | null
+  >(null);
+  const [trimVisible, setTrimVisible] = useState(false);
+  const [trimRequired, setTrimRequired] = useState(false);
   const [musicUrl, setMusicUrl] = useState("");
   const [currentAdvertSlot, setCurrentAdvertSlot] = useState(-1);
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -687,7 +671,7 @@ export default function ExplorePlayerScreen() {
   const pickAudioFile = useCallback(async () => {
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: "audio/*",
+        type: "audio/mpeg",
         copyToCacheDirectory: false,
       });
 
@@ -706,18 +690,62 @@ export default function ExplorePlayerScreen() {
         return;
       }
 
-      setPickedAudio({
+      const picked: PickedAudio = {
         uri: asset.uri,
         name: asset.name,
         size: asset.size,
         mimeType:
           asset.mimeType || guessMimeFromName(asset.name || "audio.mp3"),
-      });
+      };
+
+      setPickedAudio(picked);
+      setPickedAudioDurationMs(null);
+
+      try {
+        const duration = await getMp3DurationMs(picked.uri);
+        setPickedAudioDurationMs(duration);
+
+        // Over the cap: open the trimmer rather than failing at submit time.
+        if (duration > MAX_SNIPPET_MS) {
+          setTrimRequired(true);
+          setTrimVisible(true);
+        }
+      } catch {
+        setPickedAudio(null);
+        showTransientMessage("Could not read that file. Please pick a valid MP3.");
+      }
     } catch (error) {
       console.warn("pickAudioFile error:", error);
       showTransientMessage("Could not open file picker");
     }
   }, []);
+
+  const handleTrimConfirm = useCallback(
+    (trimmed: DocumentPicker.DocumentPickerAsset) => {
+      setTrimVisible(false);
+      setTrimRequired(false);
+      setPickedAudio({
+        uri: trimmed.uri,
+        name: trimmed.name,
+        size: trimmed.size,
+        mimeType: trimmed.mimeType || "audio/mpeg",
+      });
+
+      getMp3DurationMs(trimmed.uri)
+        .then(setPickedAudioDurationMs)
+        .catch(() => setPickedAudioDurationMs(null));
+    },
+    [],
+  );
+
+  const handleTrimCancel = useCallback(() => {
+    if (trimRequired) {
+      setPickedAudio(null);
+      setPickedAudioDurationMs(null);
+    }
+    setTrimVisible(false);
+    setTrimRequired(false);
+  }, [trimRequired]);
 
   const handleUploadSubmit = useCallback(async () => {
     if (!pickedAudio) {
@@ -734,6 +762,21 @@ export default function ExplorePlayerScreen() {
       new URL(musicUrl.trim());
     } catch {
       showTransientMessage("That link does not look valid");
+      return;
+    }
+
+    // Blocks the window between picking a file and its length being measured.
+    if (pickedAudioDurationMs == null) {
+      showTransientMessage("Still checking clip length. Try again in a moment.");
+      return;
+    }
+
+    if (pickedAudioDurationMs > MAX_SNIPPET_MS) {
+      showTransientMessage(
+        `Snippets must be ${MAX_SNIPPET_MS / 1000} seconds or shorter.`,
+      );
+      setTrimRequired(true);
+      setTrimVisible(true);
       return;
     }
 
@@ -775,7 +818,14 @@ export default function ExplorePlayerScreen() {
         Alert.alert("Error", message);
       }
     }
-  }, [createFreeCampaign, musicUrl, onRefresh, pickedAudio, resetUploadSheet]);
+  }, [
+    createFreeCampaign,
+    musicUrl,
+    onRefresh,
+    pickedAudio,
+    pickedAudioDurationMs,
+    resetUploadSheet,
+  ]);
 
   const handleDiscover = useCallback(async () => {
     if (isDiscovering || isAudioLoading) {
@@ -1245,6 +1295,28 @@ export default function ExplorePlayerScreen() {
         }}
         pickedAudioMimeType={pickedAudio?.mimeType}
         pickedAudioName={pickedAudio?.name}
+        pickedAudioDurationMs={pickedAudioDurationMs}
+        onTrimAudio={() => {
+          setTrimRequired(false);
+          setTrimVisible(true);
+        }}
+      />
+
+      <TrimSnippetModal
+        visible={trimVisible}
+        asset={
+          pickedAudio
+            ? ({
+                uri: pickedAudio.uri,
+                name: pickedAudio.name ?? "audio.mp3",
+                size: pickedAudio.size,
+                mimeType: pickedAudio.mimeType,
+              } as DocumentPicker.DocumentPickerAsset)
+            : null
+        }
+        required={trimRequired}
+        onCancel={handleTrimCancel}
+        onConfirm={handleTrimConfirm}
       />
     </View>
   );

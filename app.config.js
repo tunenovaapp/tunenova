@@ -11,7 +11,7 @@ module.exports = () => ({
   expo: {
     name: appName,
     slug: "tunenova",
-    version: "2.2.5",
+    version: "2.2.7",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
     scheme: "tunenova",
@@ -30,10 +30,7 @@ module.exports = () => ({
         backgroundColor: "#000000",
       },
       googleServicesFile: "./google-services.json",
-      permissions: [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-      ],
+      permissions: ["android.permission.MODIFY_AUDIO_SETTINGS"],
       package: "com.caribou97499.tunenova",
     },
     web: {
@@ -61,7 +58,28 @@ module.exports = () => ({
       "expo-asset",
       "expo-image",
       "expo-secure-store",
-      "expo-audio",
+      [
+        // Auto-applied via autolinking; declared here only to block the
+        // RECORD_AUDIO permission it adds by default. The app picks images
+        // only (launchImageLibraryAsync, mediaTypes: ["images"]) — never video.
+        "expo-image-picker",
+        {
+          microphonePermission: false,
+        },
+      ],
+      [
+        "expo-audio",
+        {
+          // The app only plays snippets in the foreground on /home; playback is
+          // force-paused on navigation and on backgrounding (see PlayerContext).
+          // Leaving these at their defaults injected UIBackgroundModes: ["audio"]
+          // and an unused NSMicrophoneUsageDescription.
+          enableBackgroundPlayback: false,
+          enableBackgroundRecording: false,
+          microphonePermission: false,
+          recordAudioAndroid: false,
+        },
+      ],
       "expo-notifications",
       "expo-web-browser",
       "@react-native-community/datetimepicker",

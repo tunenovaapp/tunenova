@@ -21,7 +21,7 @@ export default function EngageScreen() {
       <StatusBar barStyle="light-content" />
 
       <View style={[styles.header, { paddingTop: top + 10 }]}>
-        <Text style={styles.title}>Engage</Text>
+        <Text style={styles.title}>Opportunities</Text>
 
         <View style={styles.segmentRow}>
           <TouchableOpacity

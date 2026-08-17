@@ -1,7 +1,7 @@
 {
   "name": "Tunenova",
   "main": "expo-router/entry",
-  "version": "2.2.5",
+  "version": "2.2.7",
   "scripts": {
     "start": "expo start",
     "start:dev": "cross-env APP_VARIANT=development expo start",
@@ -30,6 +30,7 @@
     "expo-dev-client": "~55.0.34",
     "expo-device": "~55.0.17",
     "expo-document-picker": "~55.0.13",
+    "expo-file-system": "~55.0.20",
     "expo-font": "~55.0.6",
     "expo-haptics": "~55.0.14",
     "expo-image": "~55.0.10",

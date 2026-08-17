@@ -4,7 +4,6 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import {
   KeyboardAvoidingView,
-  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -38,6 +37,12 @@ import {
   PromoteStickyBanner,
   PromoteStickyBar,
 } from "@/components/promote/sticky-submit-bar";
+import { TrimSnippetModal } from "@/components/promote/trim-snippet-modal";
+import {
+  MAX_SNIPPET_BYTES,
+  MAX_SNIPPET_MS,
+  getMp3DurationMs,
+} from "@/utils/audioTrim";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
@@ -49,6 +54,8 @@ type FormShape = {
   songLink: string;
   genre: string;
   snippet: DocumentPicker.DocumentPickerAsset | null;
+  /** Measured from the file itself once picked; drives the 30s cap. */
+  snippetDurationMs: number | null;
   audience: string[];
   budget: string;
   paymentBy?: string;
@@ -60,6 +67,7 @@ const DEFAULT_VALUES: FormShape = {
   songLink: "",
   genre: "",
   snippet: null,
+  snippetDurationMs: null,
   audience: [],
   budget: "0",
   paymentBy: undefined,
@@ -108,8 +116,29 @@ const validationSchema = yup.object({
     .test(
       "size",
       "Max size is 5 MB",
-      (file) => !file || (file.size ?? 0) <= 5 * 1024 * 1024,
+      (file) => !file || (file.size ?? 0) <= MAX_SNIPPET_BYTES,
     ),
+  snippetDurationMs: yup
+    .number()
+    .nullable()
+    .test("duration", "", function (value) {
+      // No file yet — the `snippet` field reports that on its own.
+      if (!this.parent?.snippet) return true;
+
+      // Still being measured. Block submit rather than let an over-length
+      // clip through in the window before the read finishes.
+      if (value == null) {
+        return this.createError({ message: "Checking clip length…" });
+      }
+
+      if (value > MAX_SNIPPET_MS) {
+        return this.createError({
+          message: `Snippets must be ${MAX_SNIPPET_MS / 1000} seconds or shorter. Trim your clip to continue.`,
+        });
+      }
+
+      return true;
+    }),
   audience: yup
     .array()
     .of(yup.string().defined())
@@ -158,6 +187,8 @@ export default function CreateCampaignScreen() {
   const isCompact = width < 390;
   const [banner, setBanner] = useState<PromoteStickyBanner | null>(null);
   const [showTopUpAction, setShowTopUpAction] = useState(false);
+  const [trimVisible, setTrimVisible] = useState(false);
+  const [trimRequired, setTrimRequired] = useState(false);
 
   const songLinkRef = useRef<TextInput>(null);
   const budgetRef = useRef<TextInput>(null);
@@ -185,6 +216,7 @@ export default function CreateCampaignScreen() {
   const songLink = watch("songLink");
   const genre = watch("genre");
   const snippet = watch("snippet");
+  const snippetDurationMs = watch("snippetDurationMs");
   const audience = watch("audience");
   const budgetValue = watch("budget");
   const paymentBy = watch("paymentBy");
@@ -282,28 +314,80 @@ export default function CreateCampaignScreen() {
         ? "Create Paid Campaign"
         : "Create Free Campaign";
 
+  const applySnippet = useCallback(
+    (file: DocumentPicker.DocumentPickerAsset | null, duration: number | null) => {
+      setValue("snippet", file, { shouldDirty: true, shouldValidate: true });
+      setValue("snippetDurationMs", duration, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    },
+    [setValue],
+  );
+
   const handlePickSnippet = useCallback(async () => {
     const result = await DocumentPicker.getDocumentAsync({
       type: "audio/mpeg",
       copyToCacheDirectory: false,
     });
 
-    if (result.assets?.[0]) {
-      setBanner(null);
-      setShowTopUpAction(false);
-      setValue("snippet", result.assets[0], {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
+    if (result.canceled || !result.assets?.[0]) {
+      return;
     }
-  }, [setValue]);
+
+    const file = result.assets[0];
+    setBanner(null);
+    setShowTopUpAction(false);
+    applySnippet(file, null);
+
+    try {
+      const duration = await getMp3DurationMs(file.uri);
+      applySnippet(file, duration);
+
+      // Anything over the cap must be trimmed before the form can be submitted,
+      // so open the trimmer straight away rather than waiting for a failed submit.
+      if (duration > MAX_SNIPPET_MS) {
+        setTrimRequired(true);
+        setTrimVisible(true);
+      }
+    } catch {
+      setBanner({
+        tone: "error",
+        text: "Could not read that audio file. Please pick a valid MP3.",
+      });
+      applySnippet(null, null);
+    }
+  }, [applySnippet, setBanner, setShowTopUpAction]);
 
   const handleClearSnippet = useCallback(() => {
-    setValue("snippet", null, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  }, [setValue]);
+    applySnippet(null, null);
+  }, [applySnippet]);
+
+  const handleTrimConfirm = useCallback(
+    (trimmed: DocumentPicker.DocumentPickerAsset) => {
+      setTrimVisible(false);
+      setTrimRequired(false);
+      setBanner(null);
+      applySnippet(trimmed, null);
+
+      getMp3DurationMs(trimmed.uri)
+        .then((duration) => applySnippet(trimmed, duration))
+        .catch(() => {
+          // The clip we just wrote is valid; a duration readout is cosmetic.
+        });
+    },
+    [applySnippet, setBanner],
+  );
+
+  const handleTrimCancel = useCallback(() => {
+    // When the file was over the cap there is nothing valid to fall back to,
+    // so cancelling clears it rather than leaving an unsubmittable form.
+    if (trimRequired) {
+      applySnippet(null, null);
+    }
+    setTrimVisible(false);
+    setTrimRequired(false);
+  }, [applySnippet, trimRequired]);
 
   const handleCampaignTypeChange = useCallback(
     (nextType: CampaignType) => {
@@ -452,10 +536,6 @@ export default function CreateCampaignScreen() {
     handleSubmit(onSubmit)();
   };
 
-  const handleOpenAudioTrimmer = () => {
-    Linking.openURL("https://audiotrimmer.com");
-  };
-
   return (
     <>
       <Stack.Screen
@@ -588,10 +668,16 @@ export default function CreateCampaignScreen() {
             >
               <SnippetUploadCard
                 snippet={snippet}
-                error={errors.snippet?.message}
+                error={
+                  errors.snippet?.message ?? errors.snippetDurationMs?.message
+                }
+                durationMs={snippetDurationMs}
                 onPick={handlePickSnippet}
                 onClear={handleClearSnippet}
-                onTrimPress={handleOpenAudioTrimmer}
+                onTrim={() => {
+                  setTrimRequired(false);
+                  setTrimVisible(true);
+                }}
               />
             </PromoteSection>
 
@@ -730,6 +816,14 @@ export default function CreateCampaignScreen() {
           />
         </KeyboardAvoidingView>
       </View>
+
+      <TrimSnippetModal
+        visible={trimVisible}
+        asset={snippet}
+        required={trimRequired}
+        onCancel={handleTrimCancel}
+        onConfirm={handleTrimConfirm}
+      />
     </>
   );
 }

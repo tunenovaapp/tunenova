@@ -29,11 +29,6 @@ const slides = [
     subtitle: "to snippets of new music",
   },
   {
-    image: require("../assets/images/onboarding-2.png"),
-    title: "Discover",
-    subtitle: "the artists behind the music",
-  },
-  {
     image: require("../assets/images/onboarding-3.png"),
     title: "Earn",
     subtitle: "when you listen & discover",
@@ -62,15 +57,6 @@ function useSlideAnimatedStyles(progress: any) {
     const opacity = interpolate(progress.value, [0.7, 1, 1.3], [0, 1, 0]);
     return { transform: [{ translateX }], opacity };
   });
-  const rImage2 = useAnimatedStyle(() => {
-    const translateX = interpolate(
-      progress.value,
-      [1, 2, 3],
-      [width, 0, -width]
-    );
-    const opacity = interpolate(progress.value, [1.7, 2, 2.3], [0, 1, 0]);
-    return { transform: [{ translateX }], opacity };
-  });
   const rText0 = useAnimatedStyle(() => {
     const translateY = interpolate(progress.value, [-1, 0, 1], [40, 0, -40]);
     const opacity = interpolate(progress.value, [-0.3, 0, 0.3], [0, 1, 0]);
@@ -81,14 +67,9 @@ function useSlideAnimatedStyles(progress: any) {
     const opacity = interpolate(progress.value, [0.7, 1, 1.3], [0, 1, 0]);
     return { transform: [{ translateY }], opacity };
   });
-  const rText2 = useAnimatedStyle(() => {
-    const translateY = interpolate(progress.value, [1, 2, 3], [40, 0, -40]);
-    const opacity = interpolate(progress.value, [1.7, 2, 2.3], [0, 1, 0]);
-    return { transform: [{ translateY }], opacity };
-  });
   return {
-    rImages: [rImage0, rImage1, rImage2],
-    rTexts: [rText0, rText1, rText2],
+    rImages: [rImage0, rImage1],
+    rTexts: [rText0, rText1],
   };
 }
 

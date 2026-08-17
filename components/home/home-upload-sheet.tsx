@@ -1,4 +1,5 @@
 import { RFValue } from "@/utils/responsiveFont";
+import { formatMs } from "@/utils/time";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import {
@@ -20,8 +21,10 @@ type HomeUploadSheetProps = {
   onClose: () => void;
   onPickAudio: () => void;
   onSubmit: () => void;
+  onTrimAudio?: () => void;
   pickedAudioMimeType?: string | null;
   pickedAudioName?: string | null;
+  pickedAudioDurationMs?: number | null;
   visible: boolean;
 };
 
@@ -32,10 +35,18 @@ export function HomeUploadSheet({
   onClose,
   onPickAudio,
   onSubmit,
+  onTrimAudio,
   pickedAudioMimeType,
   pickedAudioName,
+  pickedAudioDurationMs,
   visible,
 }: HomeUploadSheetProps) {
+  const fileMeta = pickedAudioName
+    ? [pickedAudioDurationMs ? formatMs(pickedAudioDurationMs) : null, pickedAudioMimeType]
+        .filter(Boolean)
+        .join(" · ") || "MP3 snippet, up to 5MB"
+    : "MP3 snippet, up to 30s";
+
   return (
     <Modal
       visible={visible}
@@ -86,11 +97,21 @@ export function HomeUploadSheet({
                 {pickedAudioName || "Choose music file"}
               </Text>
 
-              <Text style={styles.fileButtonMeta}>
-                {pickedAudioMimeType || "MP3 snippet, up to 5MB"}
-              </Text>
+              <Text style={styles.fileButtonMeta}>{fileMeta}</Text>
             </View>
           </TouchableOpacity>
+
+          {pickedAudioName && onTrimAudio ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={styles.trimLink}
+              onPress={onTrimAudio}
+              disabled={isSubmitting}
+            >
+              <Ionicons name="cut-outline" size={14} color="#E10032" />
+              <Text style={styles.trimLinkText}>Trim this clip</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -195,6 +216,17 @@ const styles = StyleSheet.create({
   },
   disabledSurface: {
     opacity: 0.6,
+  },
+  trimLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: -6,
+  },
+  trimLinkText: {
+    color: "#E10032",
+    fontSize: RFValue(12),
+    fontFamily: "Nunito-Regular",
   },
   fileButtonIcon: {
     width: 42,

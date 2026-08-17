@@ -1,6 +1,13 @@
 import { useCreateLaunchroomCampaign } from "@/api/launchroom/launchroom";
 import { useBalance } from "@/api/wallet/wallet";
 import { SnippetUploadCard } from "@/components/promote/snippet-upload-card";
+import { TrimSnippetModal } from "@/components/promote/trim-snippet-modal";
+import {
+  MAX_SNIPPET_BYTES,
+  MAX_SNIPPET_MS,
+  describeSnippetProblem,
+  getMp3DurationMs,
+} from "@/utils/audioTrim";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker, {
   type DateTimePickerEvent,
@@ -41,6 +48,10 @@ export default function CreateLaunchroomScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [snippet, setSnippet] =
     useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [snippetDurationMs, setSnippetDurationMs] = useState<number | null>(null);
+  const [snippetError, setSnippetError] = useState<string | undefined>(undefined);
+  const [trimVisible, setTrimVisible] = useState(false);
+  const [trimRequired, setTrimRequired] = useState(false);
   const [artwork, setArtwork] = useState<{
     uri: string;
     name: string;
@@ -67,10 +78,61 @@ export default function CreateLaunchroomScreen() {
       type: "audio/mpeg",
       copyToCacheDirectory: true,
     });
-    if (!result.canceled && result.assets?.[0]) {
-      setSnippet(result.assets[0]);
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const file = result.assets[0];
+    setSnippet(file);
+    setSnippetDurationMs(null);
+    setSnippetError(undefined);
+
+    if ((file.size ?? 0) > MAX_SNIPPET_BYTES) {
+      setSnippetError("Max size is 5 MB");
+      return;
+    }
+
+    try {
+      const duration = await getMp3DurationMs(file.uri);
+      setSnippetDurationMs(duration);
+
+      // Over the cap: the file cannot be submitted as-is, so go straight to
+      // the trimmer instead of failing at submit time.
+      if (duration > MAX_SNIPPET_MS) {
+        setTrimRequired(true);
+        setTrimVisible(true);
+      }
+    } catch {
+      setSnippet(null);
+      setSnippetError("Could not read that audio file. Please pick a valid MP3.");
     }
   }, []);
+
+  const handleClearSnippet = useCallback(() => {
+    setSnippet(null);
+    setSnippetDurationMs(null);
+    setSnippetError(undefined);
+  }, []);
+
+  const handleTrimConfirm = useCallback(
+    (trimmed: DocumentPicker.DocumentPickerAsset) => {
+      setTrimVisible(false);
+      setTrimRequired(false);
+      setSnippet(trimmed);
+      setSnippetError(undefined);
+
+      getMp3DurationMs(trimmed.uri)
+        .then(setSnippetDurationMs)
+        .catch(() => setSnippetDurationMs(null));
+    },
+    [],
+  );
+
+  const handleTrimCancel = useCallback(() => {
+    if (trimRequired) {
+      handleClearSnippet();
+    }
+    setTrimVisible(false);
+    setTrimRequired(false);
+  }, [handleClearSnippet, trimRequired]);
 
   const formatDate = (date: Date) =>
     date.toLocaleDateString("en-NG", {
@@ -119,6 +181,15 @@ export default function CreateLaunchroomScreen() {
     if (!artistName.trim()) return Alert.alert("Missing", "Artist name is required");
     if (!songLink.trim()) return Alert.alert("Missing", "Fan link is required");
     if (!snippet) return Alert.alert("Missing", "Upload an audio snippet");
+    if (snippetDurationMs == null)
+      return Alert.alert("Snippet", "Still checking clip length. Try again in a moment.");
+
+    const snippetProblem = describeSnippetProblem({
+      sizeBytes: snippet.size,
+      durationMs: snippetDurationMs,
+    });
+    if (snippetProblem) return Alert.alert("Snippet", snippetProblem);
+
     if (!budget || Number(budget) < 1000) return Alert.alert("Missing", "Budget must be at least ₦1,000");
     if (!startDate) return Alert.alert("Missing", "Start date is required");
     if (!endDate) return Alert.alert("Missing", "End date is required");
@@ -219,9 +290,14 @@ export default function CreateLaunchroomScreen() {
             <Text style={styles.fieldLabel}>Audio Snippet</Text>
             <SnippetUploadCard
               snippet={snippet}
+              error={snippetError}
+              durationMs={snippetDurationMs}
               onPick={handlePickSnippet}
-              onClear={() => setSnippet(null)}
-              onTrimPress={() => {}}
+              onClear={handleClearSnippet}
+              onTrim={() => {
+                setTrimRequired(false);
+                setTrimVisible(true);
+              }}
             />
           </View>
 
@@ -343,6 +419,14 @@ export default function CreateLaunchroomScreen() {
           )}
         </Pressable>
       </View>
+
+      <TrimSnippetModal
+        visible={trimVisible}
+        asset={snippet}
+        required={trimRequired}
+        onCancel={handleTrimCancel}
+        onConfirm={handleTrimConfirm}
+      />
     </View>
   );
 }
