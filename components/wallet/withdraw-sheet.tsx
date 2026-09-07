@@ -646,10 +646,7 @@ export function WithdrawSheet({
       <View style={styles.modalRoot}>
         <Pressable style={styles.backdrop} onPress={guardedClose} />
         <View style={styles.sheetContainer}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <View style={[styles.sheet, { paddingBottom: bottom + 16 }]}>
+          <View style={[styles.sheet, { paddingBottom: bottom + 16 }]}>
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Pressable
@@ -742,8 +739,7 @@ export function WithdrawSheet({
             ) : null}
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
-    </View>
+      </View>
     </View>
   </Modal>
 );
@@ -762,7 +758,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    maxHeight: "92%",
     justifyContent: "flex-end",
   },
   sheet: {
@@ -771,9 +766,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     backgroundColor: "#0A0C10",
     borderTopWidth: 1,
-    borderTopColor: "#1C2027",
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: "#1C2027",
     paddingHorizontal: 18,
     paddingTop: 10,
+    elevation: 24,
   },
   grabber: {
     width: 44,
