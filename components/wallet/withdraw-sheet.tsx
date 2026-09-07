@@ -643,13 +643,13 @@ export function WithdrawSheet({
       animationType="slide"
       onRequestClose={guardedClose}
     >
-      <View style={styles.backdrop}>
-        <Pressable style={styles.backdropPressable} onPress={guardedClose} />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.sheetContainer}
-        >
-          <View style={[styles.sheet, { paddingBottom: bottom + 16 }]}>
+      <View style={styles.modalRoot}>
+        <Pressable style={styles.backdrop} onPress={guardedClose} />
+        <View style={styles.sheetContainer}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <View style={[styles.sheet, { paddingBottom: bottom + 16 }]}>
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Pressable
@@ -744,20 +744,25 @@ export function WithdrawSheet({
         </View>
       </KeyboardAvoidingView>
     </View>
+    </View>
   </Modal>
 );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  modalRoot: {
     flex: 1,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.7)",
   },
-  backdropPressable: {
-    ...StyleSheet.absoluteFillObject,
-  },
   sheetContainer: {
-    flex: 1,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: "92%",
     justifyContent: "flex-end",
   },
   sheet: {
