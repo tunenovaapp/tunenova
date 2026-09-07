@@ -94,9 +94,10 @@ module.exports = () => ({
         projectId: "de9ef734-5b45-4bcd-8836-ff073aebf417",
       },
     },
-    runtimeVersion: {
-      policy: "appVersion",
-    },
+    // runtimeVersion: {
+    //   policy: "appVersion",
+    // },
+    runtimeVersion: "2.2.7",
     updates: {
       url: "https://u.expo.dev/de9ef734-5b45-4bcd-8836-ff073aebf417",
       checkAutomatically: "ON_LOAD",

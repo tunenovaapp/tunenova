@@ -5,6 +5,7 @@ import { Controller, useForm } from "react-hook-form";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -14,7 +15,6 @@ import {
   ToastAndroid,
   View,
 } from "react-native";
-import Modal from "react-native-modal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as yup from "yup";
 
@@ -638,18 +638,16 @@ export function WithdrawSheet({
 
   return (
     <Modal
-      isVisible={isVisible}
-      onBackdropPress={guardedClose}
-      onBackButtonPress={guardedClose}
-      onSwipeComplete={guardedClose}
-      swipeDirection={isBusy ? undefined : "down"}
-      style={styles.modal}
-      avoidKeyboard
+      visible={isVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={guardedClose}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <View style={[styles.sheet, { paddingBottom: bottom + 16 }]}>
+      <Pressable style={styles.backdrop} onPress={guardedClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <View style={[styles.sheet, { paddingBottom: bottom + 16 }]}>
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Pressable
@@ -743,14 +741,16 @@ export function WithdrawSheet({
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
-  );
+    </Pressable>
+  </Modal>
+);
 }
 
 const styles = StyleSheet.create({
-  modal: {
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
     justifyContent: "flex-end",
-    margin: 0,
   },
   sheet: {
     maxHeight: "92%",
