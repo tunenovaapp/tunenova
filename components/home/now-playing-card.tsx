@@ -126,6 +126,7 @@ type NowPlayingCardProps = {
   currentTimeLabel: string;
   durationLabel: string;
   frameWidth: number;
+  hasAudioLoadError: boolean;
   imageAnimatedStyle?: any;
   imageSource: any;
   isAdVisible: boolean;
@@ -137,6 +138,8 @@ type NowPlayingCardProps = {
   isSponsored: boolean;
   onDiscoverPress: () => void;
   onHeroPress: () => void;
+  onRetryAudio: () => void;
+  onSkipAudio?: () => void;
   onSponsorPress?: () => void;
   progress: number;
 };
@@ -146,6 +149,7 @@ export function NowPlayingCard({
   currentTimeLabel,
   durationLabel,
   frameWidth,
+  hasAudioLoadError,
   imageAnimatedStyle,
   imageSource,
   isAdVisible,
@@ -157,11 +161,14 @@ export function NowPlayingCard({
   isSponsored,
   onDiscoverPress,
   onHeroPress,
+  onRetryAudio,
+  onSkipAudio,
   onSponsorPress,
   progress,
 }: NowPlayingCardProps) {
-  const isDiscoverDisabled = isAudioLoading || isDiscoverPending;
-  const isSponsorDisabled = isAudioLoading || isSponsorPending;
+  const isAudioUnavailable = isAudioLoading || hasAudioLoadError;
+  const isDiscoverDisabled = isAudioUnavailable || isDiscoverPending;
+  const isSponsorDisabled = isAudioUnavailable || isSponsorPending;
   const sponsoredPulse = useSharedValue(1);
 
   useEffect(() => {
@@ -236,9 +243,9 @@ export function NowPlayingCard({
           <Pressable
             style={({ pressed }) => [
               styles.heroTapTarget,
-              pressed && !isAudioLoading && styles.heroTapTargetPressed,
+              pressed && !isAudioUnavailable && styles.heroTapTargetPressed,
             ]}
-            disabled={isAudioLoading}
+            disabled={isAudioUnavailable}
             onPress={onHeroPress}
           >
             {onSponsorPress && isAdVisible ? (
@@ -286,7 +293,7 @@ export function NowPlayingCard({
                 ]}
               />
 
-              {isAudioLoading ? (
+              {isAudioLoading && !hasAudioLoadError ? (
                 <View style={styles.loadingOverlay}>
                   <View style={styles.loadingBadge}>
                     <ActivityIndicator
@@ -299,7 +306,7 @@ export function NowPlayingCard({
               ) : null}
             </View>
 
-            {!isAudioLoading ? (
+            {!isAudioUnavailable ? (
               <View
                 pointerEvents="none"
                 style={styles.centerBadgeWrap}
@@ -314,6 +321,39 @@ export function NowPlayingCard({
               </View>
             ) : null}
           </Pressable>
+          {hasAudioLoadError ? (
+            <View style={styles.loadingOverlay}>
+              <View style={styles.loadingBadge}>
+                <Text accessibilityLiveRegion="polite" style={styles.loadingText}>
+                  Couldn’t load this track
+                </Text>
+                <View style={styles.audioRecoveryActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={onRetryAudio}
+                    style={({ pressed }) => [
+                      styles.audioRecoveryButton,
+                      pressed && styles.inlineButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.loadingText}>Retry</Text>
+                  </Pressable>
+                  {onSkipAudio ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={onSkipAudio}
+                      style={({ pressed }) => [
+                        styles.audioRecoveryButton,
+                        pressed && styles.inlineButtonPressed,
+                      ]}
+                    >
+                      <Text style={styles.loadingText}>Skip</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+          ) : null}
         </RectangularProgressFrame>
 
         <View style={styles.bottomSection}>
@@ -540,6 +580,17 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontFamily: "Nunito-Bold",
     fontSize: RFValue(12),
+  },
+  audioRecoveryActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  audioRecoveryButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
   centerBadgeWrap: {
     position: "absolute",

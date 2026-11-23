@@ -253,8 +253,10 @@ export default function ExplorePlayerScreen() {
     currentIdx,
     campaigns,
     campaign,
+    canSkip,
     play,
     pause,
+    retryAudio,
     next,
     previous,
     like,
@@ -271,8 +273,6 @@ export default function ExplorePlayerScreen() {
   const advertOpacity = useSharedValue(1);
   const advertScale = useSharedValue(1);
   const finishHandledForCampaign = useRef<string | null>(null);
-  const loadTimeoutAttempts = useRef<Record<string, number>>({});
-  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousPlaybackSnapshot = useRef<PlaybackSnapshot | null>(null);
   const trackChangeState = useRef<TrackChangeState | null>(null);
   const tipsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -297,6 +297,11 @@ export default function ExplorePlayerScreen() {
   const [isLikePending, setIsLikePending] = useState(false);
   const [isDislikePending, setIsDislikePending] = useState(false);
   const [isTrackChanging, setIsTrackChanging] = useState(false);
+  const [hasSkippedStalledTrack, setHasSkippedStalledTrack] = useState(false);
+  const [failedAudio, setFailedAudio] = useState<{
+    campaignId: string;
+    source: string | null;
+  } | null>(null);
 
   const { data: profileData } = useProfile();
   const greetingName =
@@ -397,14 +402,6 @@ export default function ExplorePlayerScreen() {
   }, [campaign?.id]);
 
   useEffect(() => {
-    if (!campaign?.id || !status?.isLoaded || status?.isBuffering) {
-      return;
-    }
-
-    loadTimeoutAttempts.current[campaign.id] = 0;
-  }, [campaign?.id, status?.isBuffering, status?.isLoaded]);
-
-  useEffect(() => {
     if (isPaused) {
       advertOpacity.value = withTiming(1, { duration: 180 });
       advertScale.value = withTiming(1, { duration: 180 });
@@ -480,9 +477,14 @@ export default function ExplorePlayerScreen() {
       : null;
   const previousCampaignId =
     currentIdx > 0 ? (campaigns[currentIdx - 1]?.id ?? null) : null;
+  const audioSource = campaign?.audioFileUrl || null;
+  const hasAudioLoadError =
+    failedAudio !== null &&
+    failedAudio.campaignId === campaign?.id &&
+    failedAudio.source === audioSource;
   const isAudioLoading =
     Boolean(campaign) &&
-    (isTrackChanging || !status?.isLoaded || status?.isBuffering);
+    (isTrackChanging || !audioSource || !status?.isLoaded || status?.isBuffering);
 
   const resetTrackChangeState = useCallback(() => {
     trackChangeState.current = null;
@@ -491,18 +493,21 @@ export default function ExplorePlayerScreen() {
 
   const beginTrackChange = useCallback(
     (targetCampaignId?: string | null) => {
+      let sourceCurrentTime = 0;
       try {
+        sourceCurrentTime = player.currentTime;
         player.pause();
       } catch {}
 
       trackChangeState.current = {
         sourceCampaignId: campaign?.id ?? null,
-        sourceCurrentTime: currentTime,
+        sourceCurrentTime,
         targetCampaignId: targetCampaignId ?? null,
       };
+      setFailedAudio(null);
       setIsTrackChanging(true);
     },
-    [campaign?.id, currentTime, player],
+    [campaign?.id, player],
   );
 
   useEffect(() => {
@@ -545,14 +550,17 @@ export default function ExplorePlayerScreen() {
   ]);
 
   useEffect(() => {
-    if (loadTimeoutRef.current) {
-      clearTimeout(loadTimeoutRef.current);
-      loadTimeoutRef.current = null;
+    if (campaign?.id && !isAudioLoading && !hasAudioLoadError) {
+      setHasSkippedStalledTrack(false);
     }
+  }, [campaign?.id, hasAudioLoadError, isAudioLoading]);
 
+  useEffect(() => {
+    const campaignId = campaign?.id;
     if (
-      !campaign?.id ||
+      !campaignId ||
       !isAudioLoading ||
+      hasAudioLoadError ||
       showFeedbackSheet ||
       showTipsModal ||
       showUploadModal
@@ -560,54 +568,54 @@ export default function ExplorePlayerScreen() {
       return;
     }
 
-    const attempts = loadTimeoutAttempts.current[campaign.id] ?? 0;
-
-    if (attempts >= 2) {
-      return;
-    }
-
-    loadTimeoutRef.current = setTimeout(() => {
-      const currentAttempts =
-        (loadTimeoutAttempts.current[campaign.id] ?? 0) + 1;
-      loadTimeoutAttempts.current[campaign.id] = currentAttempts;
-
-      if (currentAttempts >= 2) {
+    const timeout = setTimeout(() => {
+      if (!canSkip || hasSkippedStalledTrack) {
         resetTrackChangeState();
-        setIsPaused(true);
+        setFailedAudio({ campaignId, source: audioSource });
+        pause();
         return;
       }
 
+      setHasSkippedStalledTrack(true);
       beginTrackChange(nextCampaignId);
-
-      void (async () => {
-        try {
-          await next();
-          setIsPaused(false);
-        } catch (error) {
-          console.error("Failed to skip slow-loading campaign:", error);
-          resetTrackChangeState();
-        }
-      })();
+      play();
+      void next().catch((error) => {
+        console.error("Failed to skip slow-loading campaign:", error);
+        resetTrackChangeState();
+      });
     }, TRACK_LOADING_TIMEOUT_MS);
 
-    return () => {
-      if (loadTimeoutRef.current) {
-        clearTimeout(loadTimeoutRef.current);
-        loadTimeoutRef.current = null;
-      }
-    };
+    return () => clearTimeout(timeout);
   }, [
+    audioSource,
     beginTrackChange,
     campaign?.id,
+    canSkip,
+    hasAudioLoadError,
+    hasSkippedStalledTrack,
     isAudioLoading,
     next,
     nextCampaignId,
+    pause,
+    play,
     resetTrackChangeState,
-    setIsPaused,
     showFeedbackSheet,
     showTipsModal,
     showUploadModal,
   ]);
+
+  const handleRetryAudio = useCallback(() => {
+    if (!audioSource) {
+      void onRefresh();
+      return;
+    }
+
+    if (retryAudio()) {
+      previousPlaybackSnapshot.current = null;
+      setFailedAudio(null);
+      play();
+    }
+  }, [audioSource, onRefresh, play, retryAudio]);
 
   const handleNext = useCallback(async () => {
     if (isTrackChanging) {
@@ -616,6 +624,10 @@ export default function ExplorePlayerScreen() {
 
     setShowFeedbackSheet(false);
     beginTrackChange(nextCampaignId);
+    if (hasAudioLoadError) {
+      setHasSkippedStalledTrack(true);
+      play();
+    }
 
     try {
       await next();
@@ -625,9 +637,11 @@ export default function ExplorePlayerScreen() {
     }
   }, [
     beginTrackChange,
+    hasAudioLoadError,
     isTrackChanging,
     next,
     nextCampaignId,
+    play,
     resetTrackChangeState,
   ]);
 
@@ -915,7 +929,7 @@ export default function ExplorePlayerScreen() {
   }, [activeAdvert?.id, currentAdvertUrl, isAudioLoading, isOpeningSponsor]);
 
   useEffect(() => {
-    if (!campaign?.id) {
+    if (!campaign?.id || hasAudioLoadError) {
       return;
     }
 
@@ -973,6 +987,7 @@ export default function ExplorePlayerScreen() {
     campaign?.isPaid,
     currentTime,
     didJustFinish,
+    hasAudioLoadError,
     listenMutate,
     next,
     nextCampaignId,
@@ -1060,6 +1075,7 @@ export default function ExplorePlayerScreen() {
   const gesture = useMemo(
     () =>
       Gesture.Tap()
+        .enabled(!hasAudioLoadError)
         .numberOfTaps(2)
         .maxDelay(280)
         .onEnd((event) => {
@@ -1070,7 +1086,7 @@ export default function ExplorePlayerScreen() {
 
           runOnJS(handleNext)();
         }),
-    [doubleTapWidth, handleGestureLeft, handleNext],
+    [doubleTapWidth, handleGestureLeft, handleNext, hasAudioLoadError],
   );
 
   const showEmptyState = !isLoading && (!campaigns.length || !campaign);
@@ -1188,6 +1204,7 @@ export default function ExplorePlayerScreen() {
                     currentTimeLabel={formatTime(currentTime)}
                     durationLabel={formatTime(duration)}
                     frameWidth={playerFrameWidth}
+                    hasAudioLoadError={hasAudioLoadError}
                     imageAnimatedStyle={artworkAnimatedStyle}
                     imageSource={imageSource}
                     isAdVisible={Boolean(activeAdvert)}
@@ -1201,6 +1218,8 @@ export default function ExplorePlayerScreen() {
                     onHeroPress={() => {
                       handleHeroPress();
                     }}
+                    onRetryAudio={handleRetryAudio}
+                    onSkipAudio={canSkip ? handleNext : undefined}
                     onSponsorPress={
                       currentAdvertUrl
                         ? () => {

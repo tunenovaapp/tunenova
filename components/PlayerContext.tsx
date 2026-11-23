@@ -35,8 +35,10 @@ interface PlayerContextType {
   setCurrentIdx: (idx: number) => void;
   campaigns: any[];
   campaign: any;
+  canSkip: boolean;
   play: () => void;
   pause: () => void;
+  retryAudio: () => boolean;
   next: (paused?: boolean) => Promise<void>;
   previous: () => void;
   like: () => Promise<void>;
@@ -84,6 +86,7 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   const { mutateAsync: dislikeMutate } = useDisLikeCampaign();
 
   const campaign = useMemo(() => campaigns[currentIdx], [campaigns, currentIdx]);
+  const canSkip = campaigns.length > 1 || (pagination?.totalPages ?? 0) > 1;
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
 
@@ -222,6 +225,28 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.remove();
   }, [pathname]);
 
+  const loadAudio = useCallback(
+    (source: string) => {
+      lastLoadedSourceRef.current = source;
+      needsSeekRef.current = true;
+      lastPlaybackIntentRef.current = null;
+
+      try {
+        player.replace({ uri: source });
+        return true;
+      } catch (error) {
+        console.warn("PlayerContext: failed to replace player source", error);
+        return false;
+      }
+    },
+    [player]
+  );
+
+  const retryAudio = useCallback(() => {
+    const source = campaign?.audioFileUrl;
+    return Boolean(source && loadAudio(source));
+  }, [campaign?.audioFileUrl, loadAudio]);
+
   useEffect(() => {
     const nextSource = campaign?.audioFileUrl || null;
 
@@ -238,16 +263,8 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
     }
 
     console.log("[PlayerContext] Campaign changed, loading new audio");
-    lastLoadedSourceRef.current = nextSource;
-    needsSeekRef.current = true;
-    lastPlaybackIntentRef.current = null;
-
-    try {
-      player.replace({ uri: nextSource });
-    } catch (error) {
-      console.warn("PlayerContext: failed to replace player source", error);
-    }
-  }, [campaign?.audioFileUrl, player, syncPlayback]);
+    loadAudio(nextSource);
+  }, [campaign?.audioFileUrl, loadAudio, syncPlayback]);
 
   useEffect(() => {
     if (!campaign?.audioFileUrl || !status.isLoaded || !needsSeekRef.current) {
@@ -367,8 +384,10 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
       setCurrentIdx,
       campaigns,
       campaign,
+      canSkip,
       play,
       pause,
+      retryAudio,
       next,
       previous,
       like,
@@ -382,6 +401,7 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
     [
       campaign,
       campaigns,
+      canSkip,
       currentIdx,
       dislike,
       discoverMutate,
@@ -396,6 +416,7 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
       player,
       previous,
       refreshing,
+      retryAudio,
       setCurrentIdx,
       setIsPaused,
     ]
