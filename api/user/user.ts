@@ -203,6 +203,7 @@ export interface StatsData {
 }
 
 export type StatsResponse = StatsData; // endpoint returns raw JSON, no wrapper
+export const userStatsQueryKey = ["stats"] as const;
 
 /* ─────────── Fetcher ─────────── */
 
@@ -217,7 +218,7 @@ export function useStats(
   options?: UseQueryOptions<StatsResponse, AxiosError<ApiError>, StatsResponse>
 ) {
   return useQuery<StatsResponse, AxiosError<ApiError>>({
-    queryKey: ["stats"],
+    queryKey: userStatsQueryKey,
     queryFn: fetchStats,
     retry: true,
     ...options,
@@ -255,7 +256,7 @@ export function useClaimDailyStreak(
     onSuccess: (data, variables, context) => {
       qc.setQueryData<ClaimStreakResponse>(["streak"], data);
       if (data.success && (data.pointsAwarded ?? 0) > 0) {
-        void qc.invalidateQueries({ queryKey: ["stats"] });
+        void qc.invalidateQueries({ queryKey: userStatsQueryKey });
       }
       options?.onSuccess?.(data, variables, context);
     },

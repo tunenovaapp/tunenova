@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import api from "../apiclient";
+import { userStatsQueryKey } from "../user/user";
 
 export interface AudioFile {
   /** Local file URI (e.g. from Expo DocumentPicker) */
@@ -313,22 +314,19 @@ export interface ListenBody {
   id: string | number; // campaign ID (path param)
 }
 
-export interface ListenReward {
-  amount: number; // NGN rewarded (10)
-  newBalance: number; // updated wallet balance
-}
-
 export interface ListenData {
   campaignId: number;
-  listenedAt: string; // ISO timestamp from server
-  reward: ListenReward;
+  listenedAt: string;
+  userListenNumber: number;
+  userMaxListens: number;
+  pointsAdded: number;
+  ownerPointsAdded: number;
+  campaignPointsAdded: number;
 }
 
-export interface ListenResponse {
-  success: true;
-  message: string; // "Campaign marked as listened"
-  data: ListenData;
-}
+export type ListenResponse =
+  | { success: true; message: string; data: ListenData }
+  | { success: false; message: string };
 
 /* ────────── Network call ────────── */
 const listenRequest = async ({ id }: ListenBody): Promise<ListenResponse> => {
@@ -347,8 +345,10 @@ export function useListenToCampaign(
     ...{
       ...options,
       onSuccess: (data, variables, context) => {
-        /* Call any caller-supplied onSuccess */
-        qc.invalidateQueries({ queryKey: ["balance"] });
+        if (data.success) {
+          void qc.invalidateQueries({ queryKey: userStatsQueryKey });
+          void qc.invalidateQueries({ queryKey: ["balance"] });
+        }
         options?.onSuccess?.(data, variables, context);
       },
     },
@@ -418,13 +418,16 @@ const disLikeRequest = async ({
 
 /* ────────── Hook ────────── */
 export function useDisLikeCampaign(
-  options?: UseMutationOptions<disLikeResponse, AxiosError<ApiError>, LikeBody>
+  options?: UseMutationOptions<disLikeResponse, AxiosError<ApiError>, disLikeBody>
 ) {
+  const qc = useQueryClient();
+
   return useMutation<disLikeResponse, AxiosError<ApiError>, disLikeBody>({
     mutationFn: disLikeRequest,
     ...{
       ...options,
       onSuccess: (data, variables, context) => {
+        void qc.invalidateQueries({ queryKey: userStatsQueryKey });
         options?.onSuccess?.(data, variables, context);
       },
     },
