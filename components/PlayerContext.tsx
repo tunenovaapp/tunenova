@@ -4,6 +4,7 @@ import {
   useExploreCampaigns,
   useLikeCampaign,
   useListenToCampaign,
+  type ListenBody,
 } from "@/api/campaign/campaign";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
@@ -46,7 +47,7 @@ interface PlayerContextType {
   refreshing: boolean;
   onRefresh: () => Promise<void>;
   isLoading: boolean;
-  listenMutate: (data: { id: string }) => void;
+  listenMutate: (data: ListenBody) => void;
   discoverMutate: (data: { id: string }) => void;
 }
 

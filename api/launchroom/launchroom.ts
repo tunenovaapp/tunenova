@@ -7,7 +7,11 @@ import {
 } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import api from "../apiclient";
-import type { ListenResponse } from "../campaign/campaign";
+import {
+  listenRequest,
+  type ListenBody,
+  type ListenResponse,
+} from "../campaign/campaign";
 import { userStatsQueryKey } from "../user/user";
 
 /* ─────────── Types ─────────── */
@@ -406,20 +410,17 @@ export function useCampaignComments(
 /* ─────────── Listen to Campaign (uses existing endpoint) ─────────── */
 
 export function useListenToLaunchroom(
-  options?: UseMutationOptions<ListenResponse, AxiosError<ApiError>, number>,
+  options?: UseMutationOptions<ListenResponse, AxiosError<ApiError>, ListenBody>,
 ) {
   const qc = useQueryClient();
-  return useMutation<ListenResponse, AxiosError<ApiError>, number>({
-    mutationFn: async (id) => {
-      const { data } = await api.post<ListenResponse>(`/campaigns/${id}/listen`);
-      return data;
-    },
+  return useMutation<ListenResponse, AxiosError<ApiError>, ListenBody>({
+    mutationFn: listenRequest,
     ...options,
     onSuccess: (data, variables, context) => {
       if (data.success) {
         void qc.invalidateQueries({ queryKey: userStatsQueryKey });
         void qc.invalidateQueries({
-          queryKey: ["campaign-leaderboard", variables],
+          queryKey: ["campaign-leaderboard", variables.id],
         });
         void qc.invalidateQueries({ queryKey: ["balance"] });
       }

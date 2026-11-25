@@ -310,9 +310,10 @@ export function useExploreCampaigns(
   });
 }
 
-export interface ListenBody {
-  id: string | number; // campaign ID (path param)
-}
+export type ListenBody = { id: string | number } & (
+  | { playbackId: string; intervals: number }
+  | { playbackId?: undefined; intervals?: undefined }
+);
 
 export interface ListenData {
   campaignId: number;
@@ -329,8 +330,15 @@ export type ListenResponse =
   | { success: false; message: string };
 
 /* ────────── Network call ────────── */
-const listenRequest = async ({ id }: ListenBody): Promise<ListenResponse> => {
-  const { data } = await api.post<ListenResponse>(`/campaigns/${id}/listen`);
+export const listenRequest = async ({
+  id,
+  playbackId,
+  intervals,
+}: ListenBody): Promise<ListenResponse> => {
+  const { data } = await api.post<ListenResponse>(
+    `/campaigns/${id}/listen${playbackId ? "/progress" : ""}`,
+    playbackId ? { playbackId, intervals } : undefined,
+  );
   return data;
 };
 

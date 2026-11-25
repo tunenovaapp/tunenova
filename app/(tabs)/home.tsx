@@ -12,6 +12,7 @@ import { TrimSnippetModal } from "@/components/promote/trim-snippet-modal";
 import { NOVA_TIPS } from "@/constants/novaTips";
 import { useNotification } from "@/context/notificationsContext";
 import { useInboxNotifications } from "@/hooks/useInboxNotifications";
+import { usePlaybackListenPoints } from "@/hooks/usePlaybackListenPoints";
 import {
   MAX_SNIPPET_MS,
   getMp3DurationMs,
@@ -62,7 +63,6 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
-const LISTEN_COMPLETION_SECONDS = 20;
 const TRACK_LOADING_TIMEOUT_MS = 12_000;
 const DEFAULT_HERO = require("../../assets/images/hero-default.png");
 
@@ -92,7 +92,6 @@ type Advert = {
 
 type PlaybackSnapshot = {
   campaignId: string;
-  currentTime: number;
   didJustFinish: boolean;
 };
 
@@ -486,6 +485,15 @@ export default function ExplorePlayerScreen() {
     Boolean(campaign) &&
     (isTrackChanging || !audioSource || !status?.isLoaded || status?.isBuffering);
 
+  usePlaybackListenPoints({
+    campaignId: campaign?.id,
+    currentTime,
+    isLoaded: hasLoadedDuration && !isAudioLoading && !hasAudioLoadError,
+    isPlaying: Boolean(status?.playing),
+    didJustFinish,
+    recordListen: listenMutate,
+  });
+
   const resetTrackChangeState = useCallback(() => {
     trackChangeState.current = null;
     setIsTrackChanging(false);
@@ -871,7 +879,6 @@ export default function ExplorePlayerScreen() {
       setIsPaused(true);
 
       if (campaign.isPaid) {
-        listenMutate({ id: campaign.id });
         setShowFeedbackSheet(true);
         return;
       }
@@ -888,7 +895,6 @@ export default function ExplorePlayerScreen() {
     isAudioLoading,
     isDiscovering,
     isDiscoverReady,
-    listenMutate,
     player,
     setIsPaused,
   ]);
@@ -935,7 +941,6 @@ export default function ExplorePlayerScreen() {
 
     const currentSnapshot: PlaybackSnapshot = {
       campaignId: campaign.id,
-      currentTime,
       didJustFinish,
     };
     const previousSnapshot = previousPlaybackSnapshot.current;
@@ -945,23 +950,19 @@ export default function ExplorePlayerScreen() {
       return;
     }
 
-    const crossedListenThreshold =
-      previousSnapshot.currentTime <= LISTEN_COMPLETION_SECONDS &&
-      currentSnapshot.currentTime > LISTEN_COMPLETION_SECONDS;
     const finishedNow =
       !previousSnapshot.didJustFinish && currentSnapshot.didJustFinish;
 
     previousPlaybackSnapshot.current = currentSnapshot;
 
     if (
-      (!crossedListenThreshold && !finishedNow) ||
+      !finishedNow ||
       finishHandledForCampaign.current === campaign.id
     ) {
       return;
     }
 
     finishHandledForCampaign.current = campaign.id;
-    listenMutate({ id: campaign.id });
 
     if (campaign.isPaid) {
       player.pause();
@@ -985,10 +986,8 @@ export default function ExplorePlayerScreen() {
     beginTrackChange,
     campaign?.id,
     campaign?.isPaid,
-    currentTime,
     didJustFinish,
     hasAudioLoadError,
-    listenMutate,
     next,
     nextCampaignId,
     player,

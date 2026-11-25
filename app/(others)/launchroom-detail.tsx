@@ -11,6 +11,7 @@ import { LaunchroomActionRail } from "@/components/launchroom/launchroom-action-
 import { LaunchroomAnalyticsSheet } from "@/components/launchroom/launchroom-analytics-sheet";
 import { LaunchroomCommentsSheet } from "@/components/launchroom/launchroom-comments-sheet";
 import { LaunchroomLeaderboardSheet } from "@/components/launchroom/launchroom-leaderboard-sheet";
+import { usePlaybackListenPoints } from "@/hooks/usePlaybackListenPoints";
 import { Ionicons } from "@expo/vector-icons";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Image } from "expo-image";
@@ -18,9 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, {
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -101,15 +100,14 @@ export default function LaunchroomDetailScreen() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
 
-  // Auto-record a listen once the user has heard >= 50% of the snippet.
-  const hasRecorded = useRef(false);
-  useEffect(() => {
-    if (hasRecorded.current || status.duration <= 0) return;
-    if (status.currentTime / status.duration >= 0.5) {
-      hasRecorded.current = true;
-      listen(campaignId);
-    }
-  }, [status.currentTime, status.duration, campaignId, listen]);
+  usePlaybackListenPoints({
+    campaignId: campaign?.id,
+    currentTime: status.currentTime,
+    isLoaded: status.isLoaded && !status.isBuffering,
+    isPlaying,
+    didJustFinish: status.didJustFinish,
+    recordListen: listen,
+  });
 
   const handleListenFull = useCallback(() => {
     if (!campaign?.songLink) return;
